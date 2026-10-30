@@ -26,6 +26,10 @@ Tools are built into `build/`: `bicgen` (the generator), `bicverify` (replays ch
 
 Levels 1-20, up to three classes. The seed is printed, and the same options and seed give byte-identical files on any platform. `--variety 0-3` controls how closely feat, skill and spell choices follow the class's `packages.2da` preference lists. Command-line options override a spec file.
 
+## Starting equipment
+
+Each character starts with the items of its first class's package (`packages.2da` `Equip2DA`), stored in the pack the way the game stores a new character: full item structs built from the install's `.uti` templates, laid out in the pack grid, stackables stacked, and one cloth robe worn. Weapons and armor are not equipped; do that in game. `bicverify` rebuilds these items and compares them with the game's own level-1 premades (fields, ObjectIds and pack positions).
+
 ## Guided builder
 
 `bicgen --guided` walks through the build on the terminal: race, level, classes (a fixed split, a random mix, or the class at every level-up), alignment, gender, ability scores, name, then each level's choices (starting package, domains, school, ability increase, feats, spells, skills), the familiar or companion, and a final look at the sheet before anything is written.
@@ -40,7 +44,7 @@ A session of nothing but Enters gives byte-for-byte the file the same seed gives
 
 ## Limits
 
-No starting equipment (gold only), no prestige classes, no epic levels, familiars and companions are random unless chosen in the guided builder, and appearance (head, skin, hair, portrait) is always random.
+No purchased or magical equipment (characters get their package's items and gold only, nothing is worn but a robe), no prestige classes, no epic levels, familiars and companions are random unless chosen in the guided builder, and appearance (head, skin, hair, portrait) is always random.
 
 ## License
 

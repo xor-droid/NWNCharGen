@@ -145,6 +145,71 @@ void gff_set_struct(gff_struct *s, const char *label, gff_struct *child)
     field_slot(s, label, GFF_STRUCT)->v.st = child;
 }
 
+gff_struct *gff_clone(const gff_struct *s)
+{
+    gff_struct *d = gff_new(s->type);
+    size_t i;
+
+    for (i = 0; i < s->n; i++)
+        gff_put_copy(d, s->f[i]);
+    return d;
+}
+
+void gff_put_copy(gff_struct *dst, const gff_field *f)
+{
+    gff_field *n = field_slot(dst, f->label, f->type);
+    size_t i;
+
+    switch (f->type) {
+    case GFF_EXOSTR:
+    case GFF_RESREF:
+        n->v.s = xstrdup(f->v.s ? f->v.s : "");
+        break;
+    case GFF_LOCSTR:
+        n->v.loc.strref = f->v.loc.strref;
+        if (f->v.loc.n) {
+            n->v.loc.e = xcalloc(f->v.loc.n, sizeof *n->v.loc.e);
+            for (i = 0; i < f->v.loc.n; i++) {
+                n->v.loc.e[i].id = f->v.loc.e[i].id;
+                n->v.loc.e[i].text = xstrdup(f->v.loc.e[i].text ? f->v.loc.e[i].text : "");
+            }
+            n->v.loc.n = f->v.loc.n;
+        }
+        break;
+    case GFF_VOID:
+    case GFF_ORIENT:
+    case GFF_VECTOR:
+        n->v.raw.p = xmalloc(f->v.raw.n ? f->v.raw.n : 1);
+        if (f->v.raw.n)
+            memcpy(n->v.raw.p, f->v.raw.p, f->v.raw.n);
+        n->v.raw.n = f->v.raw.n;
+        break;
+    case GFF_STRUCT:
+        n->v.st = gff_clone(f->v.st);
+        break;
+    case GFF_LIST:
+        for (i = 0; i < f->v.list.n; i++)
+            gff_list_add(dst, f->label, gff_clone(f->v.list.v[i]));
+        break;
+    default:
+        n->v = f->v;
+        break;
+    }
+}
+
+void gff_remove(gff_struct *s, const char *label)
+{
+    size_t i;
+
+    for (i = 0; i < s->n; i++)
+        if (strncmp(s->f[i]->label, label, 16) == 0) {
+            field_free(s->f[i]);
+            memmove(s->f + i, s->f + i + 1, (s->n - i - 1) * sizeof *s->f);
+            s->n--;
+            return;
+        }
+}
+
 void gff_list_init(gff_struct *s, const char *label)
 {
     if (!gff_get(s, label))

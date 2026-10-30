@@ -75,6 +75,12 @@ void gff_set_struct(gff_struct *s, const char *label, gff_struct *child);
 void gff_list_init(gff_struct *s, const char *label);
 void gff_list_add(gff_struct *s, const char *label, gff_struct *child);
 
+/* Deep copy of a struct; copy of one field into a struct (appended, or
+ * replacing a field of the same label); removal of a field by label. */
+gff_struct *gff_clone(const gff_struct *s);
+void gff_put_copy(gff_struct *dst, const gff_field *f);
+void gff_remove(gff_struct *s, const char *label);
+
 /* Lookup. */
 gff_field *gff_get(const gff_struct *s, const char *label);
 int64_t gff_get_int(const gff_struct *s, const char *label, int64_t def);

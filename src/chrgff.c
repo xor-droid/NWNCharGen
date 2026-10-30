@@ -5,6 +5,7 @@
 #include <strings.h>
 
 #include "chr.h"
+#include "equip.h"
 #include "levelup.h"
 
 #define BYTE(g, l, v)   gff_set_uint((g), (l), GFF_BYTE, (uint64_t)(v))
@@ -373,5 +374,6 @@ gff_struct *chr_to_gff(rules *ru, const chr *c, rng *g)
         BYTE(q, "QBObjectType", 0);
         gff_list_add(r, "QBList", q);
     }
+    equip_fill(ru, c, r, g);        /* last: its robe draw follows every other draw */
     return r;
 }
