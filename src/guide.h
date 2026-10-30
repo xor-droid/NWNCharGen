@@ -56,9 +56,9 @@ void guide_attach(guide *g, lvl_plan *pl);
 /* Familiar and companion once the levels are done. 0, or -1 if quit. */
 int guide_finish(guide *g, chr *c);
 
-/* Shows the finished character and asks whether to write it: 1 yes, 0 no,
- * -1 quit. */
-int guide_review(guide *g, const chr *c);
+/* Shows the finished character, the seed and any warnings (one per line, may
+ * be NULL), and asks whether to write it: 1 yes, 0 no, -1 quit. */
+int guide_review(guide *g, const chr *c, const char *warning);
 
 /* Writes the answer log, headed by a comment with the command to replay it. */
 int guide_save(const guide *g, const char *path, const char *command);

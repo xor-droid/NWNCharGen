@@ -269,6 +269,7 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
     gff_struct *tree;
     buf out = { 0 };
     int n;
+    char warn[1200] = "";
 
     rng_seed(&g, seed);
     chr_init(&c);
@@ -406,20 +407,25 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
         int f = o->lo.pin[n].feat;
 
         if (!chr_has_feat(&c, f)) {
-            char nm[160];
+            char nm[160], msg[400];
             int last = c.lv[c.nlevels - 1].cls;
 
-            fprintf(stderr, "bicgen: pinned feat '%s' could not be taken: %s\n",
-                    cli_tname(t, rules_feats(ru), f, "FEAT", nm, sizeof nm),
-                    feat_selectable(ru, &c, last, f, 0) || feat_selectable(ru, &c, last, f, 1) ?
-                    "it only became legal after the last free feat slot" :
-                    "no slot ever had its prerequisites and class restrictions met");
-            return -1;
+            snprintf(msg, sizeof msg, "pinned feat '%s' could not be taken: %s",
+                     cli_tname(t, rules_feats(ru), f, "FEAT", nm, sizeof nm),
+                     feat_selectable(ru, &c, last, f, 0) || feat_selectable(ru, &c, last, f, 1) ?
+                     "it only became legal after the last free feat slot" :
+                     "no slot ever had its prerequisites and class restrictions met");
+            if (!gd) {
+                fprintf(stderr, "bicgen: %s\n", msg);
+                return -1;
+            }
+            /* a guided session keeps its answers: the person decides at review */
+            snprintf(warn + strlen(warn), sizeof warn - strlen(warn), "%s\n", msg);
         }
     }
 
     if (gd) {
-        int w = guide_review(gd, &c);
+        int w = guide_review(gd, &c, warn);
 
         if (w != 1) {
             fprintf(stderr, "bicgen: %s; nothing written\n", w < 0 ? "quit" : "declined");

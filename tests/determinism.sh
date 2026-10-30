@@ -76,6 +76,19 @@ lsum=$(cd "$lev" && sha256sum ./*.bic | sort -k2 | sha256sum | cut -d' ' -f1)
 line="$line
 $lsum  $lcount files (leveled and multiclass)"
 
+# A random class with an explicit alignment draws only from classes that allow
+# it (a fourth workload, so the hashes above stay put).
+al="$work/align"
+mkdir "$al"
+for a in LG NG CG LN N CN LE NE CE; do
+    "$gen" --align "$a" --seed 9200 --count 6 --out-dir "$al" >/dev/null
+    "$gen" --align "$a" --level 5 --max-classes 2 --seed 9300 --count 2 --out-dir "$al" >/dev/null
+done
+acount=$(ls "$al" | wc -l | tr -d ' ')
+asum=$(cd "$al" && sha256sum ./*.bic | sort -k2 | sha256sum | cut -d' ' -f1)
+line="$line
+$asum  $acount files (random class, explicit alignment)"
+
 if [ "${1:-}" = "--update" ]; then
     printf "%s\n" "$line" > "$golden"
     echo "golden updated: $line"

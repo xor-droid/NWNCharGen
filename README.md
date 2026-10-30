@@ -36,7 +36,7 @@ Anything already given on the command line or in a spec file is not asked again.
 
     build/bicgen --guided --seed 77 --out-dir out < out/miratest.answers
 
-A session of nothing but Enters gives byte-for-byte the file the same seed gives without `--guided`.
+A session of nothing but Enters gives byte-for-byte the file the same seed gives without `--guided`. A pinned feat that could not be taken is shown as a warning at the review (the unguided builder refuses to write the file instead).
 
 ## Limits
 

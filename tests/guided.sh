@@ -48,10 +48,13 @@ for ans in "$here"/guided/*.ans; do
     name=$(basename "$ans" .ans)
     seed=$(sed -n 's/^# seed \([0-9]*\).*/\1/p' "$ans" | head -1)
     seed=${seed:-77}
+    extra=$(sed -n 's/^# args //p' "$ans" | head -1)    # more options for this session
     mkdir "$work/$name" "$work/$name-replay"
-    "$gen" --guided --seed "$seed" --out-dir "$work/$name" <"$ans" >/dev/null
+    # shellcheck disable=SC2086
+    "$gen" --guided --seed "$seed" $extra --out-dir "$work/$name" <"$ans" >/dev/null
     f=$(ls "$work/$name"/*.bic)
-    "$gen" --guided --seed "$seed" --out-dir "$work/$name-replay" \
+    # shellcheck disable=SC2086
+    "$gen" --guided --seed "$seed" $extra --out-dir "$work/$name-replay" \
         <"${f%.bic}.answers" >/dev/null
     if ! cmp -s "$f" "$work/$name-replay/$(basename "$f")"; then
         echo "replay FAILED: $name" >&2

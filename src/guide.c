@@ -1081,13 +1081,18 @@ int guide_finish(guide *g, chr *c)
     return g->quit ? -1 : 0;
 }
 
-int guide_review(guide *g, const chr *c)
+int guide_review(guide *g, const chr *c, const char *warning)
 {
     char line[32];
 
     g->auto_level = g->auto_all = g->step_auto = 0;
     say(g, "\n");
     cli_sheet(g->ru, g->t, c);
+    if (warning && *warning)
+        say(g, "\nWarning:\n%s", warning);
+    say(g, "\nSeed %llu: with the same options, this seed and the answers given "
+           "(saved beside the file), this character is built again.\n",
+        (unsigned long long)g->seed);
     for (;;) {
         if (ask(g, "\nWrite this character? [Y/n]: ", line, sizeof line) != 0)
             return -1;
