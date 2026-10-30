@@ -21,5 +21,6 @@ check: all
 	tests/determinism.sh
 	tests/guided.sh
 	tests/equip.sh
+	tests/prestige.sh
 
 .PHONY: all clean check

@@ -265,7 +265,7 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
     rng g;
     chr c;
     char err[160], first[64] = "", last[64] = "", path[1024], base[32];
-    int race, cls, ge, lc, tries, abil[NABIL];
+    int race, cls, ge, lc, tries, abil[NABIL], fx[NABIL];
     gff_struct *tree;
     buf out = { 0 };
     int n;
@@ -280,10 +280,32 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
         return -1;
     }
     if (race < 0) {
-        int pool[32], np = 0, r;
+        int pool[32], np = 0, r, k;
         for (r = 0; r < rules_races(ru)->nrows && np < 32; r++)
             if (twoda_int(rules_races(ru), r, "PlayerRace", 0))
                 pool[np++] = r;
+        /* a prestige class in the plan may be open to some races only */
+        for (k = 0; k < o->ncl; k++) {
+            lu_req rq[LU_MAX_REQS];
+            int nr = lu_prestige_reqs(ru, o->cl[k], rq, LU_MAX_REQS), m, q, any = 0, w = 0;
+
+            for (m = 0; m < nr; m++)
+                any |= rq[m].type == 'R';
+            for (q = 0; any && q < np; q++) {
+                int ok = 0;
+
+                for (m = 0; m < nr; m++)
+                    ok |= rq[m].type == 'R' && rq[m].a == pool[q];
+                if (ok)
+                    pool[w++] = pool[q];
+            }
+            if (any)
+                np = w;
+        }
+        if (np == 0) {
+            fprintf(stderr, "bicgen: no race can take all of those classes\n");
+            return -1;
+        }
         race = pool[rng_below(&g, (unsigned)np)];
     }
     cls = o->ncl ? o->cl[0] : o->class_s ? cli_find_row(rules_classes(ru), o->class_s, 1) : -1;
@@ -333,7 +355,29 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
     c.good_evil = ge;
     c.lawful_chaotic = lc;
 
-    switch (cli_allocate(ru, cls, race, o->fixed, 1, &g, abil)) {
+    {
+        /* scores the prestige classes' feat requirements need (Dodge: Dex 13) */
+        static const char *adj[NABIL] = { "StrAdjust", "DexAdjust", "ConAdjust",
+                                          "IntAdjust", "WisAdjust", "ChaAdjust" };
+        int need[NABIL] = { 0 }, a, k, m;
+
+        memcpy(fx, o->fixed, sizeof fx);
+        for (k = 0; k < o->ncl; k++) {
+            lu_req rq[LU_MAX_REQS];
+            int nr = lu_prestige_reqs(ru, o->cl[k], rq, LU_MAX_REQS);
+
+            for (m = 0; m < nr; m++)
+                if (rq[m].type == 'F')
+                    lu_feat_abil_need(ru, rq[m].a, need);
+        }
+        for (a = 0; a < NABIL; a++) {
+            int base = need[a] - rules_race_int(ru, race, adj[a], 0);
+
+            if (fx[a] < 0 && base > 8 && base <= 18)
+                fx[a] = base;
+        }
+    }
+    switch (cli_allocate(ru, cls, race, fx, 1, &g, abil)) {
     case 0:
         break;
     case -2:
@@ -669,6 +713,11 @@ int main(int argc, char **argv)
         for (k = 0; k < rules_nclasses(ru); k++)
             if (twoda_int(rules_classes(ru), k, "PlayerClass", 0) == 1 &&
                 !twoda_get(rules_classes(ru), k, "PreReqTable"))
+                printf("  %2d %s\n", k, cli_tname(t, rules_classes(ru), k, "Name", b, sizeof b));
+        puts("Prestige classes (--classes only, after the entry requirements are met):");
+        for (k = 0; k < rules_nclasses(ru); k++)
+            if (twoda_int(rules_classes(ru), k, "PlayerClass", 0) == 1 &&
+                twoda_get(rules_classes(ru), k, "PreReqTable") && lu_prestige_supported(ru, k))
                 printf("  %2d %s\n", k, cli_tname(t, rules_classes(ru), k, "Name", b, sizeof b));
         return 0;
     }

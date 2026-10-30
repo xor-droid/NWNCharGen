@@ -313,6 +313,33 @@ int pick_epic(rules *ru, const chr *c, const int *pool, int np, rng *g)
     return pool[pick_weighted(w, np, g)];
 }
 
+int pick_feator(rules *ru, const chr *c, const int *opt, int n)
+{
+    int k, fam;
+
+    wc_build(ru);
+    for (k = 0; k < n; k++)
+        if (chr_has_feat(c, opt[k]))
+            return opt[k];
+    for (k = 0; k < n; k++) {
+        fam = opt[k] < wc.nfeats ? wc.feat_fam[opt[k]] : -1;
+        if (fam >= 0 && committed(c, wc.fam[fam].ranged) == fam && proficient(c, &wc.fam[fam]))
+            return opt[k];
+    }
+    for (k = 0; k < n; k++) {
+        fam = opt[k] < wc.nfeats ? wc.feat_fam[opt[k]] : -1;
+        if (fam >= 0 && !wc.fam[fam].ranged && wc.fam[fam].dmg >= 6 &&
+            proficient(c, &wc.fam[fam]))
+            return opt[k];
+    }
+    for (k = 0; k < n; k++) {
+        fam = opt[k] < wc.nfeats ? wc.feat_fam[opt[k]] : -1;
+        if (fam < 0 || proficient(c, &wc.fam[fam]))
+            return opt[k];
+    }
+    return n ? opt[0] : -1;
+}
+
 int pick_feat(rules *ru, const chr *c, int cls, int bonus, const lu_opts *o, rng *g)
 {
     int cand[8], w[8], nc = 0, k, r, f, win, variety = o ? o->variety : 0;

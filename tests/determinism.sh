@@ -104,6 +104,21 @@ esum=$(cd "$ep" && sha256sum ./*.bic | sort -k2 | sha256sum | cut -d' ' -f1)
 line="$line
 $esum  $ecount files (epic levels)"
 
+# Explicit prestige builds (a sixth workload): entry requirements are met by
+# pinned feats, early skill ranks and abilities raised for the feat chains.
+pr="$work/prestige"
+mkdir "$pr"
+for s in 1 2 3; do
+    "$gen" --classes "fighter:9,divinechampion:4" --seed $((9500 + s)) --out-dir "$pr" >/dev/null
+    "$gen" --classes "paladin:8,fighter:2,dwarvendefender:5" --seed $((9510 + s)) --out-dir "$pr" >/dev/null
+    "$gen" --classes "cleric:10,divinechampion:30" --level 40 --seed $((9520 + s)) --out-dir "$pr" >/dev/null 2>&1 || true
+done
+"$gen" --classes "fighter:10,dwarvendefender:5" --hp max --seed 9530 --out-dir "$pr" >/dev/null
+pcount=$(ls "$pr" | wc -l | tr -d ' ')
+psum=$(cd "$pr" && sha256sum ./*.bic | sort -k2 | sha256sum | cut -d' ' -f1)
+line="$line
+$psum  $pcount files (prestige classes)"
+
 if [ "${1:-}" = "--update" ]; then
     printf "%s\n" "$line" > "$golden"
     echo "golden updated: $line"

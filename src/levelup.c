@@ -89,6 +89,22 @@ int chr_max_spell_level(rules *ru, const chr *c)
     return best;
 }
 
+int chr_max_arcane_spell_level(rules *ru, const chr *c)
+{
+    int cls, best = -1;
+
+    for (cls = 0; cls < rules_nclasses(ru); cls++) {
+        int m;
+
+        if (rules_class_int(ru, cls, "Arcane", 0) != 1)
+            continue;
+        m = class_max_sl(ru, c, cls);
+        if (m > best)
+            best = m;
+    }
+    return best;
+}
+
 static int skill_ranks(const chr *c, int sk)
 {
     int i, n = 0;
@@ -155,6 +171,196 @@ static int feat_prereqs(rules *ru, const chr *c, int cls, int feat)
         return 0;
     (void)cls;
     return 1;
+}
+
+/* ---- prestige entry ---------------------------------------------------- */
+
+int lu_prestige_supported(rules *ru, int cls)
+{
+    static const char *const ok[] = { "Champion_Torm", "Dwarven_Defender" };
+    const char *l = rules_class_str(ru, cls, "Label");
+    size_t i;
+
+    for (i = 0; l && i < sizeof ok / sizeof ok[0]; i++)
+        if (!strcasecmp(l, ok[i]))
+            return 1;
+    return 0;
+}
+
+int lu_prestige_reqs(rules *ru, int cls, lu_req *out, int cap)
+{
+    const char *name = twoda_get(rules_classes(ru), cls, "PreReqTable");
+    const twoda *t = name ? rules_tab(ru, name) : NULL;
+    int r, n = 0;
+
+    for (r = 0; t && r < t->nrows && n < cap; r++) {
+        const char *ty = twoda_get(t, r, "ReqType");
+        int a = twoda_int(t, r, "ReqParam1", -1), b = twoda_int(t, r, "ReqParam2", 0);
+        char k;
+
+        if (!ty || a < 0)
+            continue;
+        k = !strcasecmp(ty, "SKILL") ? 'S' : !strcasecmp(ty, "FEAT") ? 'F' :
+            !strcasecmp(ty, "FEATOR") ? 'O' : !strcasecmp(ty, "RACE") ? 'R' :
+            !strcasecmp(ty, "BAB") ? 'B' : !strcasecmp(ty, "ARCSPELL") ? 'A' :
+            !strcasecmp(ty, "SPELL") ? 'P' : !strcasecmp(ty, "CLASSOR") ? 'C' : 0;
+        if (!k)                         /* VAR: a module switch, always open */
+            continue;
+        out[n].type = k;
+        out[n].a = a;
+        out[n].b = b;
+        n++;
+    }
+    return n;
+}
+
+static const char *label_of(const twoda *t, int row, const char *col)
+{
+    const char *s = t && row >= 0 && row < t->nrows ? twoda_get(t, row, col) : NULL;
+
+    return s ? s : "?";
+}
+
+int lu_prestige_ok(rules *ru, const chr *c, int cls, char *why, size_t n)
+{
+    lu_req rq[LU_MAX_REQS];
+    int nr = lu_prestige_reqs(ru, cls, rq, LU_MAX_REQS), i;
+    int any[128] = { 0 }, hit[128] = { 0 };     /* OR groups by type letter */
+
+    for (i = 0; i < nr; i++) {
+        const lu_req *q = &rq[i];
+
+        switch (q->type) {
+        case 'S':
+            if (q->a < MAX_SK && skill_ranks(c, q->a) < q->b) {
+                seterr(why, n, "needs %d ranks of %s (has %d)", q->b,
+                       label_of(rules_tab(ru, "skills"), q->a, "Label"),
+                       skill_ranks(c, q->a));
+                return 0;
+            }
+            break;
+        case 'F':
+            if (!chr_has_feat(c, q->a)) {
+                char blk[100];
+
+                lu_feat_block(ru, c, q->a, blk, sizeof blk);
+                seterr(why, n, "needs the feat %s%s%s", label_of(rules_feats(ru), q->a, "LABEL"),
+                       *blk ? ": " : "", blk);
+                return 0;
+            }
+            break;
+        case 'B':
+            if (chr_bab(ru, c) < q->a) {
+                seterr(why, n, "needs base attack bonus +%d (has +%d)", q->a,
+                       chr_bab(ru, c));
+                return 0;
+            }
+            break;
+        case 'A':
+            if (chr_max_arcane_spell_level(ru, c) < q->a) {
+                seterr(why, n, "needs to cast level %d arcane spells", q->a);
+                return 0;
+            }
+            break;
+        case 'P':
+            if (chr_max_spell_level(ru, c) < q->a) {
+                seterr(why, n, "needs to cast level %d spells", q->a);
+                return 0;
+            }
+            break;
+        case 'O':
+        case 'R':
+        case 'C':
+            any[(int)q->type] = 1;
+            if (q->type == 'O' ? chr_has_feat(c, q->a) : q->type == 'R' ?
+                c->race == q->a : chr_class_level(c, q->a) > 0)
+                hit[(int)q->type] = 1;
+            break;
+        }
+    }
+    if (any['O'] && !hit['O']) {
+        seterr(why, n, "needs a weapon feat (Weapon Focus in a weapon it allows)");
+        return 0;
+    }
+    if (any['R'] && !hit['R']) {
+        seterr(why, n, "not open to this race");
+        return 0;
+    }
+    if (any['C'] && !hit['C']) {
+        seterr(why, n, "needs levels in one of the classes it follows from");
+        return 0;
+    }
+    return 1;
+}
+
+void lu_feat_abil_need(rules *ru, int feat, int *need)
+{
+    const twoda *t = rules_feats(ru);
+    static const char *mincol[NABIL] = { "MINSTR", "MINDEX", "MINCON", "MININT",
+                                         "MINWIS", "MINCHA" };
+    int a, i, v, depth;
+
+    for (depth = 0; depth < 6 && feat >= 0 && feat < t->nrows; depth++) {
+        int next = -1;
+
+        for (a = 0; a < NABIL; a++) {
+            v = twoda_int(t, feat, mincol[a], 0);
+            if (v > need[a])
+                need[a] = v;
+        }
+        for (i = 1; i <= 2; i++) {
+            char col[16];
+
+            snprintf(col, sizeof col, "PREREQFEAT%d", i);
+            v = twoda_int(t, feat, col, -1);
+            if (v >= 0 && next >= 0)
+                lu_feat_abil_need(ru, v, need);
+            else if (v >= 0)
+                next = v;
+        }
+        feat = next;
+    }
+}
+
+void lu_feat_block(rules *ru, const chr *c, int feat, char *why, size_t n)
+{
+    const twoda *t = rules_feats(ru);
+    static const char *mincol[NABIL] = { "MINSTR", "MINDEX", "MINCON", "MININT",
+                                         "MINWIS", "MINCHA" };
+    static const char *const aname[NABIL] = { "Strength", "Dexterity", "Constitution",
+                                              "Intelligence", "Wisdom", "Charisma" };
+    int a, i, v, depth;
+
+    if (n)
+        why[0] = '\0';
+    for (depth = 0; depth < 6 && feat >= 0 && feat < t->nrows; depth++) {
+        int next = -1;
+
+        for (a = 0; a < NABIL; a++) {
+            v = twoda_int(t, feat, mincol[a], 0);
+            if (v > 0 && chr_eff_abil(ru, c, a) < v) {
+                seterr(why, n, "%s needs %s %d (has %d)", label_of(t, feat, "LABEL"),
+                       aname[a], v, chr_eff_abil(ru, c, a));
+                return;
+            }
+        }
+        v = twoda_int(t, feat, "MINATTACKBONUS", 0);
+        if (v > 0 && chr_bab(ru, c) < v) {
+            seterr(why, n, "%s needs base attack bonus +%d", label_of(t, feat, "LABEL"), v);
+            return;
+        }
+        for (i = 1; i <= 2 && next < 0; i++) {
+            char col[16];
+
+            snprintf(col, sizeof col, "PREREQFEAT%d", i);
+            v = twoda_int(t, feat, col, -1);
+            if (v >= 0 && !chr_has_feat(c, v))
+                next = v;
+        }
+        if (next < 0)
+            return;
+        feat = next;
+    }
 }
 
 int feat_selectable(rules *ru, const chr *c, int cls, int feat, int bonus)
@@ -354,8 +560,26 @@ int lu_begin(rules *ru, chr *c, int cls, hp_mode hm, rng *g, pending *p,
         return -1;
     }
     if (twoda_get(rules_classes(ru), cls, "PreReqTable")) {
-        seterr(err, errlen, "prestige class %d not supported yet", cls);
-        return -1;
+        int max = rules_class_int(ru, cls, "MaxLevel", 0);
+        char why[160];
+
+        if (!lu_prestige_supported(ru, cls)) {
+            seterr(err, errlen, "prestige class %d not supported yet", cls);
+            return -1;
+        }
+        if (li == 0) {
+            seterr(err, errlen, "a prestige class cannot be the first class");
+            return -1;
+        }
+        if (max > 0 && chr_class_level(c, cls) >= max) {
+            seterr(err, errlen, "class %d is limited to %d levels", cls, max);
+            return -1;
+        }
+        if (chr_class_level(c, cls) == 0 && !lu_prestige_ok(ru, c, cls, why, sizeof why)) {
+            seterr(err, errlen, "cannot take %s: %s",
+                   rules_class_str(ru, cls, "Label"), why);
+            return -1;
+        }
     }
     if (!chr_align_ok(ru, cls, c->good_evil, c->lawful_chaotic)) {
         seterr(err, errlen, "alignment not allowed for class %d", cls);
@@ -761,6 +985,15 @@ int lu_auto_skill(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o)
     int cls = c->lv[c->nlevels - 1].cls, nsk = rules_nskills(ru), i;
     int cand[MAX_SK], nc = 0, total = c->nlevels;
     int cs[8], sw[8], ncs = 0, w, win = pick_window(o ? o->variety : 0);
+
+    /* ranks a prestige class asks for come first, at cross-class cost if need be */
+    for (i = 0; o && i < nsk && i < MAX_SK; i++) {
+        int have = skill_ranks(c, i), cost = chr_skill_cost(ru, cls, i);
+
+        if (o->skill_goal[i] > have && cost && cost <= p->skill_pts &&
+            have + 1 <= skill_max_ranks(total, cost == 1))
+            return lu_buy_skill(ru, c, p, i, 1, NULL, 0);
+    }
 
     for (w = 0; w < 2 && !ncs; w++) {
         const twoda *sp = lu_pref_tab(ru, c, cls, "SkillPref2DA", w);

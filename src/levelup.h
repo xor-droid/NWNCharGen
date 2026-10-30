@@ -77,6 +77,31 @@ int lu_spell_pool(rules *ru, const chr *c, int cls, int spell_level, int *out,
                   int cap);
 int feat_selectable(rules *ru, const chr *c, int cls, int feat, int bonus);
 
+/* ---- prestige classes ---- */
+
+/* One row of a class's cls_pres_*.2da. type: 'S' skill a with b ranks, 'F' feat a,
+ * 'O' feat a (any one of these), 'R' race a (any one of these), 'B' base attack
+ * a, 'A' arcane spell level a, 'P' spell level a of any kind, 'C' class a (any
+ * one of these). Rows the build cannot or need not test (script variables) are
+ * left out. */
+typedef struct { char type; int a, b; } lu_req;
+#define LU_MAX_REQS 48
+
+/* Whether the generator models this prestige class (rules for what it adds to
+ * casting or choices are in place). Other classes are refused. */
+int lu_prestige_supported(rules *ru, int cls);
+/* The entry requirements of a prestige class; 0 for a base class. */
+int lu_prestige_reqs(rules *ru, int cls, lu_req *out, int cap);
+/* Whether c, as it stands, may take a first level of cls: 1 yes, 0 no with the
+ * first unmet requirement in why. */
+int lu_prestige_ok(rules *ru, const chr *c, int cls, char *why, size_t n);
+/* Raises need[] (NABIL entries) to the scores the feat and the feats it follows
+ * from ask for. */
+void lu_feat_abil_need(rules *ru, int feat, int *need);
+/* Why a feat cannot be taken yet (a missing score, base attack bonus or
+ * prerequisite feat), for messages; empty if nothing is missing. */
+void lu_feat_block(rules *ru, const chr *c, int feat, char *why, size_t n);
+
 /* Spell list column of spells.2da for a class ("Wiz_Sorc", "Bard", ...). */
 const char *spell_list_column(rules *ru, int cls);
 /* Whether the class's alignment restriction allows (good/evil, law/chaos). */
@@ -85,6 +110,8 @@ int chr_align_ok(rules *ru, int cls, int ge, int lc);
 /* Highest spell level the character can currently cast (-1 if none), and the
  * same for one class's own levels. */
 int chr_max_spell_level(rules *ru, const chr *c);
+/* The same counting only classes that cast arcane spells. */
+int chr_max_arcane_spell_level(rules *ru, const chr *c);
 int lu_class_max_spell_level(rules *ru, const chr *c, int cls);
 
 #endif

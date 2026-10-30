@@ -17,7 +17,13 @@ typedef struct {
     struct { int feat, from; } pin[MAX_PINS];
     int navoid;
     int avoid[MAX_PINS];
+    short skill_goal[MAX_SK];   /* ranks to reach early (a prestige class asks for them) */
 } lu_opts;
+
+/* The one member of a set of alternative feats (a prestige class's "any weapon
+ * focus") to take: one already held, else one of the weapon the character
+ * already uses, else a proficient d6+ melee weapon, else the first. */
+int pick_feator(rules *ru, const chr *c, const int *opt, int n);
 
 /* Chooses a feat for an open slot of class cls from the package's preference
  * list: the next few legal entries are weighed by list position and by how

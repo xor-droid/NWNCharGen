@@ -415,8 +415,9 @@ static void check_replay(rules *ru, const chr *c)
         int abil_due;
         int cls = lr->cls;
 
-        if (twoda_get(rules_classes(ru), cls, "PreReqTable"))
-            continue; /* prestige entry rules are not modelled yet */
+        if (twoda_get(rules_classes(ru), cls, "PreReqTable") &&
+            !lu_prestige_supported(ru, cls))
+            continue; /* this prestige class is not modelled yet */
         memcpy(&t, c, sizeof t);
         t.desc = NULL;
         t.nlevels = li;

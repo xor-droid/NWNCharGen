@@ -26,6 +26,10 @@ Tools are built into `build/`: `bicgen` (the generator), `bicverify` (replays ch
 
 Levels 1-40, up to three classes. From level 21 a character is epic: it gets the Epic Character feat, `EpicLevel` is set, and the epic feats of its class lists are open (skill ranks are bought before feats from level 21, since epic feats ask for up to level+3 ranks). There are no epic spells or epic spell slots. The seed is printed, and the same options and seed give byte-identical files on any platform. `--variety 0-3` controls how closely feat, skill and spell choices follow the class's `packages.2da` preference lists. Command-line options override a spec file.
 
+## Prestige classes
+
+`--classes fighter:9,divinechampion:3` (or `dwarvendefender`) takes prestige levels after base levels. Supported so far: Divine Champion (also `championoftorm`) and Dwarven Defender; the others are refused until their rules (spell levels, weapon-of-choice picks, ability gains) are modelled. A prestige class cannot be the first class and counts toward the three-class limit. Entry requirements come from the install's `cls_pres_*.2da`: skills, feats, any-of feat groups, race, base attack bonus, arcane or any spell level, earlier classes. The plan checks what picks cannot change (base attack bonus by that level, rank caps, race, alignment) before building, then pins the required feats and weapon focus, buys the required skill ranks early (cross-class if need be) and raises the base ability scores the feat chains need (Dodge wants Dex 13). A build that cannot qualify stops with the reason. A random race is limited to those the plan allows. `bicverify` checks the Divine Champion and Dwarven Defender premades level by level; their stored saves differ from the derived ones (see Limits).
+
 ## Starting equipment
 
 Each character starts with the items of its first class's package (`packages.2da` `Equip2DA`), stored in the pack the way the game stores a new character: full item structs built from the install's `.uti` templates, laid out in the pack grid, stackables stacked, and one cloth robe worn. Weapons and armor are not equipped; do that in game. `bicverify` rebuilds these items and compares them with the game's own level-1 premades (fields, ObjectIds and pack positions).
@@ -44,7 +48,7 @@ A session of nothing but Enters gives byte-for-byte the file the same seed gives
 
 ## Limits
 
-No purchased or magical equipment (characters get their package's items and gold only, nothing is worn but a robe), no prestige classes, familiars and companions are random unless chosen in the guided builder, and appearance (head, skin, hair, portrait) is always random.
+No purchased or magical equipment (characters get their package's items and gold only, nothing is worn but a robe), only two prestige classes (below), saved throws of epic and prestige premades differ from the derived values by a few points (gear and effects are not modelled, and some differences run the other way, so the cause is not fully known), familiars and companions are random unless chosen in the guided builder, and appearance (head, skin, hair, portrait) is always random.
 
 ## License
 

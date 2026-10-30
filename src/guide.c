@@ -208,6 +208,18 @@ static int class_pool(rules *ru, int *pool, int cap)
     return n;
 }
 
+/* A prestige class the build models and the character qualifies for now. */
+static int prestige_open(rules *ru, const chr *c, int r)
+{
+    const twoda *t = rules_classes(ru);
+    char why[160];
+    int max = rules_class_int(ru, r, "MaxLevel", 0);
+
+    return twoda_int(t, r, "PlayerClass", 0) == 1 && twoda_get(t, r, "PreReqTable") &&
+           lu_prestige_supported(ru, r) && (max <= 0 || chr_class_level(c, r) < max) &&
+           (chr_class_level(c, r) > 0 || lu_prestige_ok(ru, c, r, why, sizeof why));
+}
+
 static const char *class_name(guide *g, int cls, char *b, size_t bn)
 {
     return cli_tname(g->t, rules_classes(g->ru), cls, "Name", b, bn);
@@ -296,7 +308,7 @@ static void ask_class(guide *g)
 
             if (cli_parse_classes(g->ru, line, cl, cn, &nc) != 0) {
                 say(g, "  not understood (name:levels,... with at most %d different "
-                       "base classes)\n", MAX_CLASSES);
+                       "classes)\n", MAX_CLASSES);
                 continue;
             }
             for (i = 0; i < nc; i++)
@@ -580,7 +592,8 @@ static int pick_class_cb(rules *ru, const chr *c, int li, int dflt, void *ud)
     for (r = 0; r < rules_nclasses(ru) && np < 64; r++) {
         int have = chr_class_level(c, r) > 0, nclasses = 0, i;
 
-        if (!base_class(ru, r) || !chr_align_ok(ru, r, c->good_evil, c->lawful_chaotic))
+        if (!(base_class(ru, r) || prestige_open(ru, c, r)) ||
+            !chr_align_ok(ru, r, c->good_evil, c->lawful_chaotic))
             continue;
         for (i = 0; i < rules_nclasses(ru); i++)
             nclasses += chr_class_level(c, i) > 0;

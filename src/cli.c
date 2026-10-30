@@ -38,6 +38,9 @@ int cli_find_row(const twoda *t, const char *s, int playable_col)
         if (l && cli_alnum_eq(l, s))
             return r;
     }
+    /* the game's name for the class whose label is Champion_Torm */
+    if (cli_alnum_eq(s, "divinechampion") || cli_alnum_eq(s, "championoftorm"))
+        return cli_find_row(t, "Champion_Torm", playable_col);
     return -1;
 }
 
@@ -328,7 +331,8 @@ int cli_parse_classes(rules *ru, const char *s, int *cl, int *cn, int *n)
         *sep = '\0';
         row = cli_find_row(rules_classes(ru), tok, 1);
         lv = atoi(sep + 1);
-        if (row < 0 || lv < 1 || twoda_get(rules_classes(ru), row, "PreReqTable"))
+        if (row < 0 || lv < 1 || (twoda_get(rules_classes(ru), row, "PreReqTable") &&
+                                  !lu_prestige_supported(ru, row)))
             return -1;
         for (k = 0; k < *n; k++)
             if (cl[k] == row)
