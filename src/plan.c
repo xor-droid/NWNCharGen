@@ -66,8 +66,15 @@ int plan_run(rules *ru, chr *c, const lvl_plan *pl, rng *g, char *err, size_t n)
 
     for (i = 0; i < pl->n; i++) {
         pending p;
+        int cls = pl->seq[i];
 
-        if (lu_begin(ru, c, pl->seq[i], i == 0 ? HP_MAX : pl->hm, g, &p, err, n) != 0)
+        if (i > 0 && pl->pick_class)
+            cls = pl->pick_class(ru, c, i, cls, pl->ud);
+        if (cls < 0) {
+            snprintf(err, n, "stopped before level %d", i + 1);
+            return -1;
+        }
+        if (lu_begin(ru, c, cls, i == 0 ? HP_MAX : pl->hm, g, &p, err, n) != 0)
             return -1;
         if (p.need_school && !school_used && pl->school != PLAN_SCHOOL_NONE) {
             int sc = pl->school;
@@ -78,7 +85,14 @@ int plan_run(rules *ru, chr *c, const lvl_plan *pl, rng *g, char *err, size_t n)
                 return -1;
             school_used = 1;
         }
-        lu_autofill(ru, c, &p, g, &pl->opts);
+        if (pl->fill) {
+            if (pl->fill(ru, c, &p, g, &pl->opts, pl->ud) != 0) {
+                snprintf(err, n, "stopped during level %d", i + 1);
+                return -1;
+            }
+        } else {
+            lu_autofill(ru, c, &p, g, &pl->opts);
+        }
         lu_end(c, &p);
     }
     return 0;

@@ -82,7 +82,9 @@ const char *spell_list_column(rules *ru, int cls);
 /* Whether the class's alignment restriction allows (good/evil, law/chaos). */
 int chr_align_ok(rules *ru, int cls, int ge, int lc);
 
-/* Highest spell level the class can currently cast (-1 if none). */
+/* Highest spell level the character can currently cast (-1 if none), and the
+ * same for one class's own levels. */
 int chr_max_spell_level(rules *ru, const chr *c);
+int lu_class_max_spell_level(rules *ru, const chr *c, int cls);
 
 #endif

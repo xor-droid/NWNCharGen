@@ -72,6 +72,11 @@ static int class_max_sl(rules *ru, const chr *c, int cls)
     return best;
 }
 
+int lu_class_max_spell_level(rules *ru, const chr *c, int cls)
+{
+    return class_max_sl(ru, c, cls);
+}
+
 int chr_max_spell_level(rules *ru, const chr *c)
 {
     int cls, best = -1;

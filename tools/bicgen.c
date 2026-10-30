@@ -11,6 +11,8 @@
 #include <unistd.h>
 
 #include "../src/chr.h"
+#include "../src/cli.h"
+#include "../src/guide.h"
 #include "../src/levelup.h"
 #include "../src/ini.h"
 #include "../src/look.h"
@@ -29,6 +31,7 @@ typedef struct {
     int pin_from[MAX_PINS], npin, navoid;
     lu_opts lo;                                        /* resolved variety, pins, avoids */
     int level, have_level, max_classes, count, show, fixed[NABIL], list, install_vault;
+    int guided, per_level;      /* --guided; the guide picks the class at each level-up */
     hp_mode hm;
     int ncl, cl[MAX_CLASSES], cn[MAX_CLASSES];   /* --classes, parsed */
     uint64_t seed;
@@ -66,156 +69,16 @@ static void usage(void)
          "  --count N         generate N characters\n"
          "  --out-dir DIR     where to write .bic files (default: ./out)\n"
          "  --install         also copy each file into <user-dir>/localvault\n"
+         "  --guided          build interactively: choose anything, or press Enter\n"
+         "                    for the automatic pick (same seed + all Enters gives\n"
+         "                    the same file as without --guided); answers are saved\n"
+         "                    next to the .bic so the session can be replayed\n"
          "  --show            print a character sheet\n"
          "  --list            list race and class names\n");
 }
 
-static int alnum_eq(const char *a, const char *b)
-{
-    for (;;) {
-        while (*a && !isalnum((unsigned char)*a))
-            a++;
-        while (*b && !isalnum((unsigned char)*b))
-            b++;
-        if (!*a || !*b)
-            return !*a && !*b;
-        if (tolower((unsigned char)*a++) != tolower((unsigned char)*b++))
-            return 0;
-    }
-}
-
-static int find_row(const twoda *t, const char *s, int playable_col)
-{
-    char *e;
-    long v = strtol(s, &e, 10);
-    int r;
-
-    if (*s && !*e && v >= 0 && v < t->nrows)
-        return (int)v;
-    for (r = 0; r < t->nrows; r++) {
-        const char *l = twoda_get(t, r, "Label");
-        if (playable_col >= 0 && twoda_int(t, r, "PlayerClass", 1) != 1)
-            continue;
-        if (l && alnum_eq(l, s))
-            return r;
-    }
-    return -1;
-}
-
-static int parse_align(const char *s, int *ge, int *lc)
-{
-    char a[4] = { 0 };
-    size_t i, n = 0;
-
-    for (i = 0; s[i] && n < 3; i++)
-        if (isalpha((unsigned char)s[i]))
-            a[n++] = (char)toupper((unsigned char)s[i]);
-    if (n == 1 && a[0] == 'N') {
-        *ge = *lc = 50;
-        return 0;
-    }
-    if (n != 2)
-        return -1;
-    *lc = a[0] == 'L' ? 85 : a[0] == 'C' ? 15 : a[0] == 'N' ? 50 : -1;
-    *ge = a[1] == 'G' ? 85 : a[1] == 'E' ? 15 : a[1] == 'N' ? 50 : -1;
-    return (*lc < 0 || *ge < 0) ? -1 : 0;
-}
-
-static const char *align_name(int ge, int lc)
-{
-    static const char *n[3][3] = {
-        { "Lawful Good", "Lawful Neutral", "Lawful Evil" },
-        { "Neutral Good", "True Neutral", "Neutral Evil" },
-        { "Chaotic Good", "Chaotic Neutral", "Chaotic Evil" } };
-    int l = lc >= 70 ? 0 : lc <= 30 ? 2 : 1;
-    int g = ge >= 70 ? 0 : ge <= 30 ? 2 : 1;
-
-    return n[l][g];
-}
-
-/* ---- point buy --------------------------------------------------------- */
-
-static int pb_cost(int s)
-{
-    return s <= 14 ? s - 8 : s == 15 ? 8 : s == 16 ? 10 : s == 17 ? 13 : 16;
-}
-
-static int pb_total(const int *a)
-{
-    int i, t = 0;
-
-    for (i = 0; i < NABIL; i++)
-        t += pb_cost(a[i]);
-    return t;
-}
-
-/* Class-recommended array (classes.2da Str..Cha columns). */
-static void recommended(rules *ru, int cls, int *out)
-{
-    static const char *col[NABIL] = { "Str", "Dex", "Con", "Int", "Wis", "Cha" };
-    int a;
-
-    for (a = 0; a < NABIL; a++)
-        out[a] = rules_class_int(ru, cls, col[a], 10);
-}
-
-/* Spend the budget: fixed scores stay, the rest climb toward the class's
- * recommended values (highest first), then past them if points remain. */
-static int allocate(rules *ru, int cls, int race, const int *fixed, int randomize,
-                    rng *g, int *out)
-{
-    int budget = rules_race_int(ru, race, "AbilitiesPointBuyNumber", 30);
-    int rec[NABIL], a, b, i, any_fixed = 0, moves;
-
-    recommended(ru, cls, rec);
-    for (a = 0; a < NABIL; a++) {
-        if (fixed[a] != -1 && (fixed[a] < 8 || fixed[a] > 18))
-            return -2;      /* point buy only covers 8..18 */
-        out[a] = fixed[a] >= 0 ? fixed[a] : 8;
-        any_fixed |= fixed[a] >= 0;
-    }
-    if (pb_total(out) > budget)
-        return -1;
-    for (;;) {
-        int best = -1;
-        for (a = 0; a < NABIL; a++) {
-            if (fixed[a] >= 0 || out[a] >= 18)
-                continue;
-            if (pb_total(out) - pb_cost(out[a]) + pb_cost(out[a] + 1) > budget)
-                continue;
-            /* prefer the ability furthest below its recommended value */
-            if (best < 0 || rec[a] - out[a] > rec[best] - out[best])
-                best = a;
-        }
-        if (best < 0)
-            break;
-        out[best]++;
-    }
-    if (randomize && !any_fixed) {
-        for (moves = 0; moves < 40; moves++) {
-            a = (int)rng_below(g, NABIL);
-            b = (int)rng_below(g, NABIL);
-            if (a == b || out[a] <= 8 || out[b] >= 18)
-                continue;
-            out[a]--;
-            out[b]++;
-            if (pb_total(out) > budget) {
-                out[a]++;
-                out[b]--;
-            }
-        }
-        for (i = 0; i < NABIL; i++) {
-            while (out[i] < 18 && pb_total(out) - pb_cost(out[i]) +
-                   pb_cost(out[i] + 1) <= budget)
-                out[i]++;
-        }
-    }
-    return 0;
-}
-
 /* ---- files ------------------------------------------------------------- */
 
-/* A random row of t that is not a blank placeholder (col must be set). */
 /* "random", a number, or a spellschools.2da label; "generalist" is school 0 */
 static int pick_school(rules *ru, const char *s, rng *g)
 {
@@ -227,61 +90,12 @@ static int pick_school(rules *ru, const char *s, rng *g)
     (void)g;
     if (!strcmp(s, "random"))
         return PLAN_SCHOOL_RANDOM;
-    if (alnum_eq(s, "generalist"))
+    if (cli_alnum_eq(s, "generalist"))
         return 0;
     for (k = 0; k < ss->nrows; k++)
-        if (twoda_get(ss, k, "Label") && alnum_eq(s, twoda_get(ss, k, "Label")))
+        if (twoda_get(ss, k, "Label") && cli_alnum_eq(s, twoda_get(ss, k, "Label")))
             return k;
     return isdigit((unsigned char)s[0]) && atoi(s) < ss->nrows ? atoi(s) : -1;
-}
-
-/* "fighter:5,wizard:3" -> class rows and level counts; 0 on success */
-static int parse_classes(rules *ru, const char *s, int *cl, int *cn, int *n)
-{
-    char buf[256], *tok, *save = NULL;
-    int k;
-
-    snprintf(buf, sizeof buf, "%s", s);
-    *n = 0;
-    for (tok = strtok_r(buf, ",", &save); tok; tok = strtok_r(NULL, ",", &save)) {
-        char *sep = strpbrk(tok, ":=");
-        int row, lv;
-
-        if (!sep || *n >= MAX_CLASSES)
-            return -1;
-        *sep = '\0';
-        row = find_row(rules_classes(ru), tok, 1);
-        lv = atoi(sep + 1);
-        if (row < 0 || lv < 1 || twoda_get(rules_classes(ru), row, "PreReqTable"))
-            return -1;
-        for (k = 0; k < *n; k++)
-            if (cl[k] == row)
-                return -1;
-        cl[*n] = row;
-        cn[(*n)++] = lv;
-    }
-    return *n ? 0 : -1;
-}
-
-static void file_name(const chr *c, char *out, size_t n)
-{
-    char tmp[128];
-    size_t i, k = 0;
-
-    snprintf(tmp, sizeof tmp, "%s%s", c->first, c->last);
-    for (i = 0; tmp[i] && k < 16 && k + 1 < n; i++)
-        if (isalnum((unsigned char)tmp[i]))
-            out[k++] = (char)tolower((unsigned char)tmp[i]);
-    if (!k)
-        out[k++] = 'x';
-    out[k] = '\0';
-}
-
-static int exists(const char *p)
-{
-    struct stat st;
-
-    return stat(p, &st) == 0;
 }
 
 static void default_user_dir(char *out, size_t n)
@@ -297,80 +111,6 @@ static void default_user_dir(char *out, size_t n)
         if (glob(pat[i], 0, NULL, &gl) == 0 && gl.gl_pathc > 0)
             snprintf(out, n, "%s", gl.gl_pathv[0]);
         globfree(&gl);
-    }
-}
-
-/* ---- sheet ------------------------------------------------------------- */
-
-static const char *tname(const tlk *t, const twoda *tab, int row, const char *col,
-                         char *buf, size_t n)
-{
-    const char *s = twoda_get(tab, row, col);
-    const char *lab = twoda_get(tab, row, "Label");
-
-    buf[0] = '\0';
-    if (t && s && tlk_copy(t, (uint32_t)atoi(s), buf, n) > 0 && buf[0])
-        return buf;
-    snprintf(buf, n, "%s", lab ? lab : "?");
-    return buf;
-}
-
-static void sheet(rules *ru, const tlk *t, const chr *c)
-{
-    static const char *an[NABIL] = { "STR", "DEX", "CON", "INT", "WIS", "CHA" };
-    char b[160];
-    int a, i, j, sk;
-    const twoda *sks = rules_skills(ru), *ft = rules_feats(ru);
-
-    printf("%s %s  --  %s %s", c->first, c->last,
-           tname(t, rules_races(ru), c->race, "Name", b, sizeof b),
-           c->gender ? "female" : "male");
-    for (i = 0; i < rules_nclasses(ru); i++)
-        if (chr_class_level(c, i))
-            printf("  %s %d", tname(t, rules_classes(ru), i, "Name", b, sizeof b),
-                   chr_class_level(c, i));
-    printf("  (%s)\n", align_name(c->good_evil, c->lawful_chaotic));
-    for (a = 0; a < NABIL; a++)
-        printf("  %s %2d (%d)", an[a], chr_eff_abil(ru, c, a),
-               abil_mod(chr_eff_abil(ru, c, a)));
-    printf("\n  HP %d  BAB %d  Fort %d Ref %d Will %d  XP %ld  Gold %d\n",
-           chr_maxhp(ru, c), chr_bab(ru, c), chr_save(ru, c, 0), chr_save(ru, c, 1),
-           chr_save(ru, c, 2), c->xp, c->gold);
-    printf("  Skills:");
-    for (sk = 0; sk < rules_nskills(ru) && sk < MAX_SK; sk++) {
-        int tot = 0;
-        for (i = 0; i < c->nlevels; i++)
-            tot += c->lv[i].ranks[sk];
-        if (tot)
-            printf(" %s %d,", tname(t, sks, sk, "Name", b, sizeof b), tot);
-    }
-    printf("\n  Feats:");
-    for (i = 0; i < c->nlevels; i++)
-        for (j = 0; j < c->lv[i].nfeats; j++)
-            printf(" %s;", tname(t, ft, c->lv[i].feats[j], "FEAT", b, sizeof b));
-    printf("\n");
-    for (i = 0; i < c->nlevels; i++) {
-        int sl;
-        const twoda *sp = rules_tab(ru, "spells");
-        for (sl = 0; sl < NSPLVL; sl++)
-            if (c->lv[i].nknown[sl]) {
-                printf("  Level-%d spells learned at level %d:", sl, i + 1);
-                for (j = 0; j < c->lv[i].nknown[sl]; j++)
-                    printf(" %s;", tname(t, sp, c->lv[i].known[sl][j], "Name", b, sizeof b));
-                printf("\n");
-            }
-    }
-    if (c->school > 0)
-        printf("  School: %s (opposed: %s)\n",
-               twoda_get(rules_tab(ru, "spellschools"), c->school, "Label"),
-               twoda_get(rules_tab(ru, "spellschools"),
-                         twoda_int(rules_tab(ru, "spellschools"), c->school, "Opposition", 0),
-                         "Label"));
-    if (c->domain1 >= 0) {
-        const twoda *d = rules_tab(ru, "domains");
-        char b2[160];   /* separate buffers: both are used in one printf */
-        printf("  Domains: %s, %s\n", tname(t, d, c->domain1, "Name", b, sizeof b),
-               tname(t, d, c->domain2, "Name", b2, sizeof b2));
     }
 }
 
@@ -420,63 +160,6 @@ static char *own(const char *s)
     if (!nowned)
         atexit(free_owned);
     return owned[nowned++] = d;
-}
-
-static int alnum_contains(const char *hay, const char *needle)
-{
-    char h[160], n[160];
-    size_t i, j;
-
-    for (i = j = 0; hay[i] && j < sizeof h - 1; i++)
-        if (isalnum((unsigned char)hay[i]))
-            h[j++] = (char)tolower((unsigned char)hay[i]);
-    h[j] = '\0';
-    for (i = j = 0; needle[i] && j < sizeof n - 1; i++)
-        if (isalnum((unsigned char)needle[i]))
-            n[j++] = (char)tolower((unsigned char)needle[i]);
-    n[j] = '\0';
-    return *n && strstr(h, n) != NULL;
-}
-
-/* A feat by number, label or in-game name; -1 if unknown. */
-static int find_feat(rules *ru, const tlk *t, const char *s)
-{
-    const twoda *f = rules_feats(ru);
-    char nm[160];
-    int r;
-
-    if (isdigit((unsigned char)s[0]) && atoi(s) < f->nrows && twoda_get(f, atoi(s), "FEAT"))
-        return atoi(s);
-    for (r = 0; r < f->nrows; r++) {
-        const char *lab = twoda_get(f, r, "LABEL");
-
-        if (!twoda_get(f, r, "FEAT"))
-            continue;
-        if ((lab && alnum_eq(lab, s)) || alnum_eq(tname(t, f, r, "FEAT", nm, sizeof nm), s))
-            return r;
-    }
-    return -1;
-}
-
-static void list_feats(rules *ru, const tlk *t, const char *text)
-{
-    const twoda *f = rules_feats(ru);
-    char nm[160];
-    int r, n = 0;
-
-    for (r = 0; r < f->nrows; r++) {
-        const char *lab = twoda_get(f, r, "LABEL");
-
-        if (!twoda_get(f, r, "FEAT"))
-            continue;
-        tname(t, f, r, "FEAT", nm, sizeof nm);
-        if (alnum_contains(nm, text) || (lab && alnum_contains(lab, text))) {
-            printf("  %4d  %s  [%s]\n", r, nm, lab ? lab : "");
-            n++;
-        }
-    }
-    if (!n)
-        printf("  no feat matches '%s'\n", text);
 }
 
 /* Splits "a, b@3, c" into names (and the optional @level). */
@@ -577,7 +260,7 @@ static int load_spec(const char *path, opts *o, char *err, size_t errlen)
 }
 
 static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir,
-                     const tlk *t, const char *user)
+                     const tlk *t, const char *user, guide *gd, const char *command)
 {
     rng g;
     chr c;
@@ -590,7 +273,7 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
     rng_seed(&g, seed);
     chr_init(&c);
 
-    race = o->race_s ? find_row(rules_races(ru), o->race_s, -1) : -1;
+    race = o->race_s ? cli_find_row(rules_races(ru), o->race_s, -1) : -1;
     if (o->race_s && (race < 0 || !twoda_int(rules_races(ru), race, "PlayerRace", 0))) {
         fprintf(stderr, "bicgen: unknown or non-player race '%s'\n", o->race_s);
         return -1;
@@ -602,8 +285,8 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
                 pool[np++] = r;
         race = pool[rng_below(&g, (unsigned)np)];
     }
-    cls = o->ncl ? o->cl[0] : o->class_s ? find_row(rules_classes(ru), o->class_s, 1) : -1;
-    if (o->ncl && o->class_s && find_row(rules_classes(ru), o->class_s, 1) != cls) {
+    cls = o->ncl ? o->cl[0] : o->class_s ? cli_find_row(rules_classes(ru), o->class_s, 1) : -1;
+    if (o->ncl && o->class_s && cli_find_row(rules_classes(ru), o->class_s, 1) != cls) {
         fprintf(stderr, "bicgen: --class '%s' is not the first class of --classes\n",
                 o->class_s);
         return -1;
@@ -614,9 +297,14 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
     }
     if (cls < 0) {
         int pool[64], np = 0, r;
+        int pge = -1, plc = 0;
+
+        if (o->align_s && cli_parse_align(o->align_s, &pge, &plc) != 0)
+            pge = -1;
         for (r = 0; r < rules_nclasses(ru) && np < 64; r++)
             if (twoda_int(rules_classes(ru), r, "PlayerClass", 0) == 1 &&
-                !twoda_get(rules_classes(ru), r, "PreReqTable"))
+                !twoda_get(rules_classes(ru), r, "PreReqTable") &&
+                (pge < 0 || chr_align_ok(ru, r, pge, plc)))
                 pool[np++] = r;
         cls = pool[rng_below(&g, (unsigned)np)];
     }
@@ -625,7 +313,7 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
     c.gender = o->gender_s ? (tolower((unsigned char)o->gender_s[0]) == 'f') :
                              (int)rng_below(&g, 2);
     if (o->align_s) {
-        if (parse_align(o->align_s, &ge, &lc) != 0) {
+        if (cli_parse_align(o->align_s, &ge, &lc) != 0) {
             fprintf(stderr, "bicgen: bad alignment '%s'\n", o->align_s);
             return -1;
         }
@@ -644,7 +332,7 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
     c.good_evil = ge;
     c.lawful_chaotic = lc;
 
-    switch (allocate(ru, cls, race, o->fixed, 1, &g, abil)) {
+    switch (cli_allocate(ru, cls, race, o->fixed, 1, &g, abil)) {
     case 0:
         break;
     case -2:
@@ -673,6 +361,7 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
         lvl_plan pl;
         int k, any_school = 0;
 
+        memset(&pl, 0, sizeof pl);
         if (o->ncl) {
             int m;
 
@@ -696,11 +385,22 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
             fprintf(stderr, "bicgen: unknown school '%s' (try --list)\n", o->school_s);
             return -1;
         }
+        if (gd)
+            guide_attach(gd, &pl);
         if (plan_run(ru, &c, &pl, &g, err, sizeof err) != 0) {
-            fprintf(stderr, "bicgen: %s\n", err);
+            if (gd && gd->quit)
+                fprintf(stderr, "bicgen: quit; nothing written\n");
+            else
+                fprintf(stderr, "bicgen: %s\n", err);
+            chr_free(&c);
             return -1;
         }
         plan_finish(ru, &c, &g);
+        if (gd && guide_finish(gd, &c) != 0) {
+            fprintf(stderr, "bicgen: quit; nothing written\n");
+            chr_free(&c);
+            return -1;
+        }
     }
     for (n = 0; n < o->lo.npins; n++) {
         int f = o->lo.pin[n].feat;
@@ -710,7 +410,7 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
             int last = c.lv[c.nlevels - 1].cls;
 
             fprintf(stderr, "bicgen: pinned feat '%s' could not be taken: %s\n",
-                    tname(t, rules_feats(ru), f, "FEAT", nm, sizeof nm),
+                    cli_tname(t, rules_feats(ru), f, "FEAT", nm, sizeof nm),
                     feat_selectable(ru, &c, last, f, 0) || feat_selectable(ru, &c, last, f, 1) ?
                     "it only became legal after the last free feat slot" :
                     "no slot ever had its prerequisites and class restrictions met");
@@ -718,24 +418,45 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
         }
     }
 
+    if (gd) {
+        int w = guide_review(gd, &c);
+
+        if (w != 1) {
+            fprintf(stderr, "bicgen: %s; nothing written\n", w < 0 ? "quit" : "declined");
+            chr_free(&c);
+            return -1;
+        }
+    }
     tree = chr_to_gff(ru, &c, &g);
     gff_write(tree, "BIC ", &out);
 
-    file_name(&c, base, sizeof base);
+    cli_file_name(&c, base, sizeof base);
     snprintf(path, sizeof path, "%s/%s.bic", outdir, base);
-    for (n = 1; exists(path) && n < 1000; n++)
+    for (n = 1; cli_exists(path) && n < 1000; n++)
         snprintf(path, sizeof path, "%s/%.13s%d.bic", outdir, base, n);
     if (write_file(path, out.p, out.n) != 0) {
         fprintf(stderr, "bicgen: cannot write %s: %s\n", path, strerror(errno));
         return -1;
     }
     printf("seed %llu -> %s\n", (unsigned long long)seed, path);
+    if (gd) {
+        char ap[1100];
+        size_t stem;
+
+        snprintf(ap, sizeof ap, "%s", path);
+        stem = strrchr(ap, '.') ? (size_t)(strrchr(ap, '.') - ap) : strlen(ap);
+        snprintf(ap + stem, sizeof ap - stem, ".answers");
+        if (guide_save(gd, ap, command) == 0)
+            printf("  answers saved to %s (replay: %s < that file)\n", ap, command);
+        else
+            fprintf(stderr, "bicgen: cannot write %s\n", ap);
+    }
     if (o->show)
-        sheet(ru, t, &c);
+        cli_sheet(ru, t, &c);
     if (o->install_vault && user && *user) {
         char vp[1100];
         snprintf(vp, sizeof vp, "%s/localvault/%s", user, strrchr(path, '/') + 1);
-        if (exists(vp))
+        if (cli_exists(vp))
             fprintf(stderr, "bicgen: %s exists; not overwriting\n", vp);
         else if (write_file(vp, out.p, out.n) == 0)
             printf("  installed to %s\n", vp);
@@ -758,9 +479,11 @@ int main(int argc, char **argv)
     rules *ru;
     tlk *t = NULL;
     int i, a, fails = 0;
-    char tp[1100];
+    char tp[1100], command[2048] = "bicgen";
+    guide gd;
 
     memset(&o, 0, sizeof o);
+    memset(&gd, 0, sizeof gd);
     o.level = 1;
     o.max_classes = 1;
     o.lo.variety = 2;
@@ -793,6 +516,8 @@ int main(int argc, char **argv)
             o.list = 1;
         } else if (!strcmp(argv[i], "--install")) {
             o.install_vault = 1;
+        } else if (!strcmp(argv[i], "--guided") || !strcmp(argv[i], "-g")) {
+            o.guided = 1;
         } else if (want_arg(argc, argv, &i, "--nwn-dir", &o.install) ||
                    want_arg(argc, argv, &i, "--user-dir", &o.user) ||
                    want_arg(argc, argv, &i, "--race", &o.race_s) ||
@@ -879,7 +604,7 @@ int main(int argc, char **argv)
     if (o.classes_s) {
         int k, sum = 0;
 
-        if (parse_classes(ru, o.classes_s, o.cl, o.cn, &o.ncl) != 0) {
+        if (cli_parse_classes(ru, o.classes_s, o.cl, o.cn, &o.ncl) != 0) {
             fprintf(stderr, "bicgen: bad --classes '%s' (want name:levels,... with at most "
                     "%d distinct base classes)\n", o.classes_s, MAX_CLASSES);
             return 2;
@@ -901,22 +626,22 @@ int main(int argc, char **argv)
     t = tlk_open(tp);
 
     if (o.find_feat_s) {
-        list_feats(ru, t, o.find_feat_s);
+        cli_list_feats(ru, t, o.find_feat_s);
         return 0;
     }
     for (i = 0; i < o.npin; i++) {
-        int f = find_feat(ru, t, o.pin_s[i]);
+        int f = cli_find_feat(ru, t, o.pin_s[i]);
 
         if (f < 0) {
             fprintf(stderr, "bicgen: unknown feat '%s'; close matches:\n", o.pin_s[i]);
-            list_feats(ru, t, o.pin_s[i]);
+            cli_list_feats(ru, t, o.pin_s[i]);
             return 2;
         }
         o.lo.pin[o.lo.npins].feat = f;
         o.lo.pin[o.lo.npins++].from = o.pin_from[i];
     }
     for (i = 0; i < o.navoid; i++) {
-        int f = find_feat(ru, t, o.avoid_s[i]);
+        int f = cli_find_feat(ru, t, o.avoid_s[i]);
 
         if (f < 0) {
             fprintf(stderr, "bicgen: unknown feat '%s' in --avoid\n", o.avoid_s[i]);
@@ -930,7 +655,7 @@ int main(int argc, char **argv)
         puts("Races:");
         for (k = 0; k < rules_races(ru)->nrows; k++)
             if (twoda_int(rules_races(ru), k, "PlayerRace", 0))
-                printf("  %2d %s\n", k, tname(t, rules_races(ru), k, "Name", b, sizeof b));
+                printf("  %2d %s\n", k, cli_tname(t, rules_races(ru), k, "Name", b, sizeof b));
         puts("Wizard schools (--school):");
         for (k = 0; k < rules_tab(ru, "spellschools")->nrows; k++)
             printf("  %2d %s\n", k, twoda_get(rules_tab(ru, "spellschools"), k, "Label"));
@@ -938,16 +663,101 @@ int main(int argc, char **argv)
         for (k = 0; k < rules_nclasses(ru); k++)
             if (twoda_int(rules_classes(ru), k, "PlayerClass", 0) == 1 &&
                 !twoda_get(rules_classes(ru), k, "PreReqTable"))
-                printf("  %2d %s\n", k, tname(t, rules_classes(ru), k, "Name", b, sizeof b));
+                printf("  %2d %s\n", k, cli_tname(t, rules_classes(ru), k, "Name", b, sizeof b));
         return 0;
+    }
+    if (o.guided) {
+        guide_given gv;
+        int row = -1;
+
+        if (o.count != 1) {
+            fprintf(stderr, "bicgen: --guided builds one character (--count must be 1)\n");
+            return 2;
+        }
+        memset(&gv, 0, sizeof gv);
+        guide_open(&gd, ru, t, o.seed, stdin, stdout);
+        gv.race = o.race_s != NULL;
+        gv.level = o.have_level || o.ncl;
+        gv.align = o.align_s != NULL;
+        gv.gender = o.gender_s != NULL;
+        gv.name = o.name != NULL;
+        gv.hp = o.hp_s != NULL;
+        gv.variety = o.variety_s != NULL;
+        for (a = 0; a < NABIL; a++)
+            gv.abil[a] = o.fixed[a] >= 0;
+        if (gv.level)
+            gd.level = o.level;
+        if (o.ncl) {
+            gd.ncl = o.ncl;
+            memcpy(gd.cl, o.cl, sizeof gd.cl);
+            memcpy(gd.cn, o.cn, sizeof gd.cn);
+        } else if (o.class_s) {
+            row = cli_find_row(rules_classes(ru), o.class_s, 1);
+            if (row < 0) {
+                fprintf(stderr, "bicgen: unknown class '%s'\n", o.class_s);
+                return 2;
+            }
+            snprintf(gd.cls, sizeof gd.cls, "%d", row);
+        }
+        if (guide_setup(&gd, &gv) != 0) {
+            fprintf(stderr, "bicgen: quit; nothing written\n");
+            guide_close(&gd);
+            tlk_free(t);
+            rules_close(ru);
+            res_close(r);
+            return 1;
+        }
+        if (gd.race[0])
+            o.race_s = gd.race;
+        if (!gv.level) {
+            o.level = gd.level;
+            o.have_level = 1;
+        }
+        if (gd.ncl && !o.ncl) {
+            memcpy(o.cl, gd.cl, sizeof o.cl);
+            memcpy(o.cn, gd.cn, sizeof o.cn);
+            o.ncl = gd.ncl;
+        }
+        if (gd.cls[0] && !o.class_s && !o.ncl)
+            o.class_s = gd.cls;
+        if (gd.max_classes > 1)
+            o.max_classes = gd.max_classes;
+        if (gd.align[0])
+            o.align_s = gd.align;
+        if (gd.gender[0])
+            o.gender_s = gd.gender;
+        if (gd.name[0])
+            o.name = gd.name;
+        for (a = 0; a < NABIL; a++)
+            if (gd.fixed[a] >= 0)
+                o.fixed[a] = gd.fixed[a];
+        if (gd.have_hm)
+            o.hm = (hp_mode)gd.hm;
+        if (gd.have_variety)
+            o.lo.variety = gd.variety;
+        {   /* the command that replays this session */
+            size_t k = strlen(command);
+
+            for (i = 1; i < argc && k + 2 < sizeof command; i++) {
+                int sp = strchr(argv[i], ' ') != NULL;
+
+                k += (size_t)snprintf(command + k, sizeof command - k, sp ? " '%s'" : " %s",
+                                      argv[i]);
+            }
+            if (!o.have_seed && k < sizeof command)
+                snprintf(command + k, sizeof command - k, " --seed %llu",
+                         (unsigned long long)o.seed);
+        }
     }
     if (mkdir(o.outdir, 0777) != 0 && errno != EEXIST) {
         fprintf(stderr, "bicgen: cannot create %s: %s\n", o.outdir, strerror(errno));
         return 1;
     }
     for (i = 0; i < o.count; i++)
-        if (build_one(ru, &o, o.seed + (uint64_t)i, o.outdir, t, user) != 0)
+        if (build_one(ru, &o, o.seed + (uint64_t)i, o.outdir, t, user,
+                      o.guided ? &gd : NULL, command) != 0)
             fails++;
+    guide_close(&gd);
     tlk_free(t);
     rules_close(ru);
     res_close(r);

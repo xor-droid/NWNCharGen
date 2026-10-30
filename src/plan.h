@@ -15,6 +15,14 @@ typedef struct {
     hp_mode hm;
     int school;               /* wizard specialty for the first wizard level */
     lu_opts opts;             /* variety and pinned/avoided feats */
+
+    /* Optional hooks for front ends that let a person decide (NULL = random).
+     * pick_class returns the class for level index li (0 is never asked; dflt
+     * is seq[li]). fill replaces lu_autofill for the level just begun and
+     * returns nonzero to stop the build. */
+    int (*pick_class)(rules *ru, const chr *c, int li, int dflt, void *ud);
+    int (*fill)(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o, void *ud);
+    void *ud;
 } lvl_plan;
 
 /* Fills seq with `levels` levels of a single class. */
