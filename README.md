@@ -27,3 +27,7 @@ Levels 1-20, up to three classes. The seed is printed, and the same options and 
 ## Limits
 
 No starting equipment (gold only), no prestige classes, no epic levels, familiars and companions are random, and there is no interactive builder yet.
+
+## License
+
+MIT. See `LICENSE`. This project is not affiliated with or endorsed by Beamdog or Atari; Neverwinter Nights is their trademark, and no game data is distributed here.
