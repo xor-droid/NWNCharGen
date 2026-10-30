@@ -1,0 +1,5 @@
+build/
+out/
+*.o
+# reference characters of unknown provenance; not redistributed
+ref/
