@@ -87,6 +87,10 @@ int feat_selectable(rules *ru, const chr *c, int cls, int feat, int bonus);
 typedef struct { char type; int a, b; } lu_req;
 #define LU_MAX_REQS 48
 
+/* Entry requirements are enforced by default. A verifier replaying the game's
+ * own premades (which ignore them) turns that off. */
+void lu_set_entry_checks(int on);
+
 /* Whether the generator models this prestige class (rules for what it adds to
  * casting or choices are in place). Other classes are refused. */
 int lu_prestige_supported(rules *ru, int cls);

@@ -343,10 +343,31 @@ int chr_from_gff(rules *ru, const gff_struct *g, chr *c, char *err, size_t errle
     return 0;
 }
 
+int chr_caster_level(rules *ru, const chr *c, int cls)
+{
+    int lv = chr_class_level(c, cls), k, best = -1, bonus = 0;
+
+    if (!lv || rules_class_int(ru, cls, "Arcane", 0) != 1)
+        return lv;
+    for (k = 0; k < rules_nclasses(ru); k++)
+        if (rules_class_int(ru, k, "Arcane", 0) == 1 && chr_class_level(c, k) > 0 &&
+            (best < 0 || chr_class_level(c, k) > chr_class_level(c, best)))
+            best = k;
+    if (best != cls)
+        return lv;
+    for (k = 0; k < rules_nclasses(ru); k++) {
+        int m = rules_class_int(ru, k, "ArcSpellLvlMod", 0), pl = chr_class_level(c, k);
+
+        if (m > 0 && pl > 0)
+            bonus += (pl + m - 1) / m;
+    }
+    return lv + bonus;
+}
+
 int chr_spell_slots(rules *ru, const chr *c, int cls, int sl)
 {
     const char *ab = rules_class_str(ru, cls, "SpellcastingAbil");
-    int lv = chr_class_level(c, cls), base, a;
+    int lv = chr_caster_level(ru, c, cls), base, a;
 
     if (!lv)
         return -1;

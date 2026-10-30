@@ -332,10 +332,10 @@ static void check_wizard(rules *ru, const gff_struct *g, const chr *c)
     int sl, li, j, first_cls = c->lv[0].cls, prestige = 0, pkg = (int)gff_get_int(g, "StartingPackage", -1);
     const twoda *pk = rules_tab(ru, "packages");
 
-    /* prestige levels (not built by the engine yet) change caster levels */
+    /* premades with prestige levels were built differently (package, school
+     * choices), so only their slot counts are compared */
     for (li = 0; li < c->nlevels; li++)
-        if (rules_class_int(ru, c->lv[li].cls, "PreReqTable", 0) ||
-            rules_class_str(ru, c->lv[li].cls, "PreReqTable"))
+        if (rules_class_str(ru, c->lv[li].cls, "PreReqTable"))
             prestige = 1;
     /* a premade may use any package of its first class; a specialist
      * wizard's package is fixed by the school */
@@ -352,9 +352,9 @@ static void check_wizard(rules *ru, const gff_struct *g, const chr *c)
         const gff_struct *e = cl->v.list.v[k];
         int cls = (int)gff_get_int(e, "Class", -1);
 
-        if (prestige || rules_class_int(ru, cls, "PickSchool", 0) <= 0)
+        if (rules_class_int(ru, cls, "PickSchool", 0) <= 0)
             continue;
-        if (gff_get_int(e, "School", 0) != (c->school > 0 ? c->school : 0))
+        if (!prestige && gff_get_int(e, "School", 0) != (c->school > 0 ? c->school : 0))
             bad(cur, "School byte %d, model has %d", (int)gff_get_int(e, "School", 0), c->school);
         for (sl = 0; sl < NSPLVL; sl++) {
             char lab[32];
@@ -365,7 +365,7 @@ static void check_wizard(rules *ru, const gff_struct *g, const chr *c)
             m = gff_get(e, lab);
             if (slots > 0 && m && (int)m->v.list.n != slots)
                 bad(cur, "spell level %d: %d memorized, %d slots", sl, (int)m->v.list.n, slots);
-            for (li = 0; li < c->nlevels; li++)
+            for (li = 0; !prestige && li < c->nlevels; li++)
                 for (j = 0; j < c->lv[li].nknown[sl]; j++) {
                     int sp = c->lv[li].known[sl][j];
 
@@ -374,10 +374,10 @@ static void check_wizard(rules *ru, const gff_struct *g, const chr *c)
                     if (chr_spell_in_school(ru, sp, c->school))
                         school_seen = 1;
                 }
-            if (c->school > 0 && sl >= 1 && slots > 0 && m && m->v.list.n &&
+            if (!prestige && c->school > 0 && sl >= 1 && slots > 0 && m && m->v.list.n &&
                 !school_seen)
                 bad(cur, "spell level %d: specialist knows no school spell", sl);
-            if (c->school > 0 && sl >= 1 && m && m->v.list.n &&
+            if (!prestige && c->school > 0 && sl >= 1 && m && m->v.list.n &&
                 !chr_spell_in_school(ru, (int)gff_get_int(m->v.list.v[0], "Spell", -1),
                                      c->school))
                 bad(cur, "spell level %d: first memorized spell is not a school spell", sl);
@@ -421,6 +421,13 @@ static void check_replay(rules *ru, const chr *c)
         memcpy(&t, c, sizeof t);
         t.desc = NULL;
         t.nlevels = li;
+        if (twoda_get(rules_classes(ru), cls, "PreReqTable") && chr_class_level(&t, cls) == 0) {
+            char why[160];
+
+            if (!lu_prestige_ok(ru, &t, cls, why, sizeof why))
+                note("level %d: premade enters %s without meeting its requirements (%s)",
+                     li + 1, rules_class_str(ru, cls, "Label"), why);
+        }
         for (i = li; i < c->nlevels; i++)
             if (c->lv[i].abil >= 0)
                 t.abil[c->lv[i].abil]--;
@@ -646,6 +653,7 @@ int main(int argc, char **argv)
         return 2;
     }
     r = res_open(argv[1], NULL, err, sizeof err);
+    lu_set_entry_checks(0);     /* the premades ignore prestige entry rules */
     if (!r || !(ru = rules_open(r, err, sizeof err))) {
         fprintf(stderr, "%s\n", err);
         return 1;

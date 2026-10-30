@@ -69,6 +69,11 @@ int rules_feat_by_label(rules *ru, const char *label);
 
 /* Counting helpers. */
 int chr_class_level(const chr *c, int cls);
+/* The level a class casts at: its own levels, plus for the arcane class with
+ * the most levels what prestige classes add (classes.2da ArcSpellLvlMod: Pale
+ * Master gives one level for every 2 of its own, rounded up). */
+struct rules;
+int chr_caster_level(struct rules *ru, const chr *c, int cls);
 int chr_class_level_upto(const chr *c, int cls, int nlevels);
 int chr_has_feat(const chr *c, int feat);
 

@@ -53,7 +53,7 @@ static int class_list_value(rules *ru, int cls, int feat)
 
 static int class_max_sl(rules *ru, const chr *c, int cls)
 {
-    int lv = chr_class_level(c, cls), sl, m = 0, best = -1;
+    int lv = chr_caster_level(ru, c, cls), sl, m = 0, best = -1;
     const char *ab;
 
     if (!lv || !rules_class_tab(ru, cls, "SpellGainTable"))
@@ -175,9 +175,16 @@ static int feat_prereqs(rules *ru, const chr *c, int cls, int feat)
 
 /* ---- prestige entry ---------------------------------------------------- */
 
+static int entry_checks = 1;
+
+void lu_set_entry_checks(int on)
+{
+    entry_checks = on;
+}
+
 int lu_prestige_supported(rules *ru, int cls)
 {
-    static const char *const ok[] = { "Champion_Torm", "Dwarven_Defender" };
+    static const char *const ok[] = { "Champion_Torm", "Dwarven_Defender", "Pale_Master" };
     const char *l = rules_class_str(ru, cls, "Label");
     size_t i;
 
@@ -575,7 +582,19 @@ int lu_begin(rules *ru, chr *c, int cls, hp_mode hm, rng *g, pending *p,
             seterr(err, errlen, "class %d is limited to %d levels", cls, max);
             return -1;
         }
-        if (chr_class_level(c, cls) == 0 && !lu_prestige_ok(ru, c, cls, why, sizeof why)) {
+        if (rules_class_int(ru, cls, "ArcSpellLvlMod", 0) > 0) {
+            int k;
+
+            for (k = 0; k < rules_nclasses(ru); k++)
+                if (chr_class_level(c, k) > 0 && rules_class_int(ru, k, "Arcane", 0) == 1 &&
+                    rules_class_tab(ru, k, "SpellKnownTable")) {
+                    seterr(err, errlen, "%s levels on top of sorcerer or bard levels are "
+                           "not modelled yet", rules_class_str(ru, cls, "Label"));
+                    return -1;
+                }
+        }
+        if (entry_checks && chr_class_level(c, cls) == 0 &&
+            !lu_prestige_ok(ru, c, cls, why, sizeof why)) {
             seterr(err, errlen, "cannot take %s: %s",
                    rules_class_str(ru, cls, "Label"), why);
             return -1;
