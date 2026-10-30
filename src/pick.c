@@ -295,6 +295,24 @@ static int swap_weapon(rules *ru, const chr *c, int cls, int bonus, int f,
     return f;
 }
 
+/* Epic levels outlast every package list, so what is left is chosen from the
+ * legal pool by fit, with weapon feats limited to the weapons already used. */
+int pick_epic(rules *ru, const chr *c, const int *pool, int np, rng *g)
+{
+    int w[1100], k, any = 0;
+
+    if (np > 1100)
+        np = 1100;
+    wc_build(ru);
+    for (k = 0; k < np; k++) {
+        w[k] = weapon_ok(c, pool[k]) ? fit(ru, c, pool[k]) : 0;
+        any |= w[k] > 0;
+    }
+    if (!any)
+        return pool[rng_below(g, (unsigned)np)];
+    return pool[pick_weighted(w, np, g)];
+}
+
 int pick_feat(rules *ru, const chr *c, int cls, int bonus, const lu_opts *o, rng *g)
 {
     int cand[8], w[8], nc = 0, k, r, f, win, variety = o ? o->variety : 0;

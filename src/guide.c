@@ -236,17 +236,17 @@ static void ask_level(guide *g, const guide_given *gv)
     if (gv->level)
         return;     /* the caller preloaded g->level */
     for (;;) {
-        if (ask(g, "\nCharacter level, 1 to 20 (Enter = 1): ", line, sizeof line) != 0)
+        if (ask(g, "\nCharacter level, 1 to 40 (Enter = 1): ", line, sizeof line) != 0)
             return;
         if (!*line) {
             g->level = 1;
             return;
         }
-        if (all_digits(line) && atoi(line) >= 1 && atoi(line) <= 20) {
+        if (all_digits(line) && atoi(line) >= 1 && atoi(line) <= MAX_CHAR_LEVEL) {
             g->level = atoi(line);
             return;
         }
-        say(g, "  a level from 1 to 20 (epic levels are not supported yet)\n");
+        say(g, "  a level from 1 to 40\n");
     }
 }
 
@@ -1018,6 +1018,8 @@ static int fill_cb(rules *ru, chr *c, pending *p, rng *r, const lu_opts *o, void
     step_domains(g, ru, c, p, r);
     step_school(g, ru, c, p);
     step_ability(g, ru, c, p);
+    if (c->nlevels > 20)            /* epic feats want this level's ranks */
+        step_skills(g, ru, c, p, r, o);
     step_feats(g, ru, c, p, r, o);
     step_spells(g, ru, c, p, r, o);
     step_skills(g, ru, c, p, r, o);

@@ -52,7 +52,7 @@ static void usage(void)
          "  --name \"First Last\"   (default: random)\n"
          "  --str/--dex/--con/--int/--wis/--cha N   base scores before racial\n"
          "                    adjustment, 8-18, within the point-buy budget\n"
-         "  --level N         character level, 1-20 (default 1)\n"
+         "  --level N         character level, 1-40 (default 1)\n"
          "  --classes LIST    level split, e.g. fighter:5,wizard:3 (the first class\n"
          "                    takes level 1; sets the level)\n"
          "  --max-classes N   random builds use 1 to N classes (1-3, default 1)\n"
@@ -624,8 +624,8 @@ int main(int argc, char **argv)
         }
         o.level = sum;
     }
-    if (o.level < 1 || o.level > 20) {
-        fprintf(stderr, "bicgen: --level takes 1 to 20 (epic levels are not supported yet)\n");
+    if (o.level < 1 || o.level > MAX_CHAR_LEVEL) {
+        fprintf(stderr, "bicgen: --level takes 1 to 40\n");
         return 2;
     }
     snprintf(tp, sizeof tp, "%s/lang/en/data/dialog.tlk", idir);

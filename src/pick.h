@@ -25,6 +25,8 @@ typedef struct {
  * one ranged) the character is proficient with. Returns -1 when the lists
  * offer nothing legal. */
 int pick_feat(rules *ru, const chr *c, int cls, int bonus, const lu_opts *o, rng *g);
+/* Fallback at epic levels: weighted by fit over the legal pool. */
+int pick_epic(rules *ru, const chr *c, const int *pool, int np, rng *g);
 
 /* The next pinned feat (or a prerequisite of one) that can be taken in this
  * slot now, or -1. */

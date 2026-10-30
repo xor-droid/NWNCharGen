@@ -89,6 +89,21 @@ asum=$(cd "$al" && sha256sum ./*.bic | sort -k2 | sha256sum | cut -d' ' -f1)
 line="$line
 $asum  $acount files (random class, explicit alignment)"
 
+# Epic levels (21-40): a fifth workload.
+ep="$work/epic"
+mkdir "$ep"
+for l in 21 26 33 40; do
+    "$gen" --level "$l" --max-classes 3 --seed $((9400 + l)) --count 3 \
+        --out-dir "$ep" >/dev/null
+done
+"$gen" --class wizard --school evocation --level 30 --seed 9450 --out-dir "$ep" >/dev/null
+"$gen" --classes "fighter:20,rogue:10" --hp avg --seed 9451 --out-dir "$ep" >/dev/null
+"$gen" --class cleric --level 40 --hp max --seed 9452 --out-dir "$ep" >/dev/null
+ecount=$(ls "$ep" | wc -l | tr -d ' ')
+esum=$(cd "$ep" && sha256sum ./*.bic | sort -k2 | sha256sum | cut -d' ' -f1)
+line="$line
+$esum  $ecount files (epic levels)"
+
 if [ "${1:-}" = "--update" ]; then
     printf "%s\n" "$line" > "$golden"
     echo "golden updated: $line"

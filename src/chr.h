@@ -8,6 +8,8 @@
 #include "rules.h"
 
 #define MAX_LEVELS 60
+#define MAX_CHAR_LEVEL 40
+#define FEAT_EPIC_CHARACTER 1001
 #define MAX_SK     64
 #define MAX_LFEATS 48   /* feats recorded for a single level */
 #define MAX_CLS    64   /* class rows tracked per character */

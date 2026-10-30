@@ -367,6 +367,7 @@ int lu_begin(rules *ru, chr *c, int cls, hp_mode hm, rng *g, pending *p,
     memset(lr, 0, sizeof *lr);
     lr->cls = cls;
     lr->abil = -1;
+    lr->epic = li >= 20;
     c->nlevels++;
     clvl = chr_class_level(c, cls);
 
@@ -661,7 +662,8 @@ int lu_auto_feat(rules *ru, chr *c, pending *p, int bonus, rng *g, const lu_opts
                 pool[k++] = pool[j];
         if (k)
             np = k;
-        pick = pool[rng_below(g, (unsigned)np)];
+        pick = c->nlevels > 20 ? pick_epic(ru, c, pool, np, g) :
+                                 pool[rng_below(g, (unsigned)np)];
     }
     return lu_pick_feat(ru, c, p, pick, bonus, NULL, 0);
 }
@@ -803,7 +805,12 @@ void lu_autofill(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o)
     lu_auto_domains(ru, c, p, g);
     lu_auto_school(ru, c, p);
     lu_auto_ability(ru, c, p);
+    /* Epic feats ask for up to level+3 ranks, so from level 21 the ranks come
+     * first, as in the game's level-up order. */
+    if (c->nlevels > 20)
+        lu_auto_skills(ru, c, p, g, o);
     lu_auto_feats(ru, c, p, g, o);
     lu_auto_spells(ru, c, p, g, o);
-    lu_auto_skills(ru, c, p, g, o);
+    if (c->nlevels <= 20)
+        lu_auto_skills(ru, c, p, g, o);
 }

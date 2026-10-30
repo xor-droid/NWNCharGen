@@ -202,6 +202,9 @@ int chr_auto_feats(rules *ru, const chr *c, int li, int *out, int cap)
                 out[n++] = f;
         }
     }
+    /* Reaching level 21 grants the Epic Character feat; no table lists it. */
+    if (li == 20 && n < cap && !owned_before(c, li, out, n, FEAT_EPIC_CHARACTER))
+        out[n++] = FEAT_EPIC_CHARACTER;
     t = rules_class_tab(ru, cls, "FeatsTable");
     if (t) {
         for (r = 0; r < t->nrows; r++) {

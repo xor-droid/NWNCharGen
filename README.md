@@ -24,7 +24,7 @@ Tools are built into `build/`: `bicgen` (the generator), `bicverify` (replays ch
 
     build/bicgen --guided                                 # build one interactively
 
-Levels 1-20, up to three classes. The seed is printed, and the same options and seed give byte-identical files on any platform. `--variety 0-3` controls how closely feat, skill and spell choices follow the class's `packages.2da` preference lists. Command-line options override a spec file.
+Levels 1-40, up to three classes. From level 21 a character is epic: it gets the Epic Character feat, `EpicLevel` is set, and the epic feats of its class lists are open (skill ranks are bought before feats from level 21, since epic feats ask for up to level+3 ranks). There are no epic spells or epic spell slots. The seed is printed, and the same options and seed give byte-identical files on any platform. `--variety 0-3` controls how closely feat, skill and spell choices follow the class's `packages.2da` preference lists. Command-line options override a spec file.
 
 ## Starting equipment
 
@@ -44,7 +44,7 @@ A session of nothing but Enters gives byte-for-byte the file the same seed gives
 
 ## Limits
 
-No purchased or magical equipment (characters get their package's items and gold only, nothing is worn but a robe), no prestige classes, no epic levels, familiars and companions are random unless chosen in the guided builder, and appearance (head, skin, hair, portrait) is always random.
+No purchased or magical equipment (characters get their package's items and gold only, nothing is worn but a robe), no prestige classes, familiars and companions are random unless chosen in the guided builder, and appearance (head, skin, hair, portrait) is always random.
 
 ## License
 

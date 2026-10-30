@@ -448,6 +448,9 @@ static void check_replay(rules *ru, const chr *c)
         if (lr->abil >= 0) /* the stat point lands before feats are picked */
             lu_pick_ability(ru, &t, &p, lr->abil, err, sizeof err);
 
+        /* the game buys skills before feats, so this level's ranks count */
+        memcpy(t.lv[li].ranks, lr->ranks, sizeof t.lv[li].ranks);
+
         /* chosen = recorded feats not handed out automatically */
         na = chr_auto_feats(ru, &t, li, autof, 64);
         for (i = 0; i < lr->nfeats; i++) {
@@ -458,7 +461,7 @@ static void check_replay(rules *ru, const chr *c)
             if (!is_auto)
                 chosen[nch++] = lr->feats[i];
         }
-        if (nch != p.general + p.bonus && lr->epic == 0 && li < 20 &&
+        if (nch != p.general + p.bonus &&
             !(nch == p.general + p.bonus - 1 && p.bonus > 0 &&
               bonus_pool_empty(ru, c, li)))
             bad(cur, "level %d: %d chosen feats, lu_begin offers %d+%d", li + 1,
@@ -474,7 +477,7 @@ static void check_replay(rules *ru, const chr *c)
                     if (k != i)
                         t.lv[li].feats[t.lv[li].nfeats++] = (uint16_t)chosen[k];
                 if (!feat_selectable(ru, &t, cls, chosen[i], 0) &&
-                    !feat_selectable(ru, &t, cls, chosen[i], 1) && li < 20)
+                    !feat_selectable(ru, &t, cls, chosen[i], 1))
                     bad(cur, "level %d: chosen feat %d not in selectable pool",
                         li + 1, chosen[i]);
             }

@@ -40,6 +40,8 @@ done <<'LIST'
 --seed 14 --level 10 --class cleric
 --seed 15 --classes fighter:5,wizard:3,rogue:2 --hp avg
 --seed 16 --level 6 --class sorcerer --variety 0
+--seed 17 --level 24 --class fighter
+--seed 18 --level 31 --max-classes 2
 LIST
 echo "identity: $n Enter-only sessions compared"
 
