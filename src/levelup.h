@@ -40,6 +40,28 @@ int lu_pick_school(rules *ru, chr *c, pending *p, int school, char *err,
  * 0..3 loosens the choices and o pins or avoids feats (see pick.h). */
 void lu_autofill(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o);
 
+/* The same choices one step at a time, for front ends that let the user decide
+ * some of them: each fills what is owed from the package lists exactly as
+ * lu_autofill does, which calls them in this order. The single-pick ones return
+ * 0 when they made a pick and -1 when nothing more can be picked now. */
+void lu_auto_domains(rules *ru, chr *c, pending *p, rng *g);
+void lu_auto_school(rules *ru, chr *c, pending *p);
+void lu_auto_ability(rules *ru, chr *c, pending *p);
+int lu_auto_feat(rules *ru, chr *c, pending *p, int bonus, rng *g, const lu_opts *o);
+void lu_auto_feats(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o);
+/* A specialist wizard needs a school spell at every castable spell level. */
+int lu_school_due(rules *ru, const chr *c, const pending *p, int sl);
+int lu_auto_school_spell(rules *ru, chr *c, pending *p, int sl, rng *g,
+                         const lu_opts *o);
+int lu_auto_spell(rules *ru, chr *c, pending *p, int sl, rng *g, const lu_opts *o);
+int lu_auto_wiz_any(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o);
+void lu_auto_spells(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o);
+int lu_auto_skill(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o);
+void lu_auto_skills(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o);
+
+/* Spell level of a spell on the class's list, -1 if it is not on it. */
+int lu_spell_level(rules *ru, int cls, int spell);
+
 /* The preference list a packages.2da column names: which 0 is the
  * character's package, 1 the class's default package. NULL if none. */
 const twoda *lu_pref_tab(rules *ru, const chr *c, int cls, const char *col,

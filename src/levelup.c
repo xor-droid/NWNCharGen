@@ -599,151 +599,206 @@ static int skill_fit(rules *ru, const chr *c, int sk)
     return pct < 20 ? 20 : pct;
 }
 
-void lu_autofill(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o)
+int lu_spell_level(rules *ru, int cls, int spell)
 {
-    lvl_rec *lr = &c->lv[c->nlevels - 1];
-    int cls = lr->cls, i, sl, pool[1100], np;
-    int nsk = rules_nskills(ru);
+    return spell_level(ru, cls, spell);
+}
 
-    if (p->need_domains) {
-        const twoda *d = rules_tab(ru, "domains");
-        int valid[64], nv = 0, d1, d2;
+void lu_auto_domains(rules *ru, chr *c, pending *p, rng *g)
+{
+    const twoda *d = rules_tab(ru, "domains");
+    const twoda *pk = rules_tab(ru, "packages");
+    int cls = c->lv[c->nlevels - 1].cls, row = chr_package(ru, c, cls);
+    int valid[64], nv = 0, d1, d2, i;
 
-        for (i = 0; i < d->nrows && nv < 64; i++)   /* skip blank rows */
-            if (twoda_get(d, i, "Label"))
-                valid[nv++] = i;
-        {
-            const twoda *pk = rules_tab(ru, "packages");
-            int row = chr_package(ru, c, cls);
-
-            d1 = pk ? twoda_int(pk, row, "Domain1", -1) : -1;   /* the package's pair */
-            d2 = pk ? twoda_int(pk, row, "Domain2", -1) : -1;
-        }
-        if (lu_pick_domains(ru, c, p, d1, d2, NULL, 0) != 0) {
-            d1 = valid[rng_below(g, (unsigned)nv)];
-            do
-                d2 = valid[rng_below(g, (unsigned)nv)];
-            while (d2 == d1);
-            lu_pick_domains(ru, c, p, d1, d2, NULL, 0);
-        }
+    if (!p->need_domains)
+        return;
+    for (i = 0; i < d->nrows && nv < 64; i++)   /* skip blank rows */
+        if (twoda_get(d, i, "Label"))
+            valid[nv++] = i;
+    d1 = pk ? twoda_int(pk, row, "Domain1", -1) : -1;   /* the package's pair */
+    d2 = pk ? twoda_int(pk, row, "Domain2", -1) : -1;
+    if (lu_pick_domains(ru, c, p, d1, d2, NULL, 0) != 0) {
+        d1 = valid[rng_below(g, (unsigned)nv)];
+        do
+            d2 = valid[rng_below(g, (unsigned)nv)];
+        while (d2 == d1);
+        lu_pick_domains(ru, c, p, d1, d2, NULL, 0);
     }
+}
+
+void lu_auto_school(rules *ru, chr *c, pending *p)
+{
     if (p->need_school)
         lu_pick_school(ru, c, p, 0, NULL, 0);
+}
+
+void lu_auto_ability(rules *ru, chr *c, pending *p)
+{
     if (p->abil_due)
-        lu_pick_ability(ru, c, p, primary_ability(ru, cls), NULL, 0);
+        lu_pick_ability(ru, c, p, primary_ability(ru, c->lv[c->nlevels - 1].cls),
+                        NULL, 0);
+}
 
-    for (i = 1; i >= 0; i--) {      /* bonus slots first, then general */
-        while ((i ? p->bonus : p->general) > 0 &&
-               (np = lu_feat_pool(ru, c, i, pool, 1100)) > 0) {
-            int pick = pick_pinned(ru, c, cls, i, o), j, k;
+int lu_auto_feat(rules *ru, chr *c, pending *p, int bonus, rng *g, const lu_opts *o)
+{
+    int cls = c->lv[c->nlevels - 1].cls, pool[1100], np, pick, j, k;
 
-            if (pick < 0)
-                pick = pick_feat(ru, c, cls, i, o, g);
-            if (pick < 0) {         /* the lists are spent: any legal feat */
-                for (j = k = 0; j < np; j++)
-                    if (!pick_avoided(o, pool[j]))
-                        pool[k++] = pool[j];
-                if (k)
-                    np = k;
-                pick = pool[rng_below(g, (unsigned)np)];
-            }
-            if (lu_pick_feat(ru, c, p, pick, i, NULL, 0) != 0)
-                break;
-        }
+    if ((bonus ? p->bonus : p->general) <= 0 ||
+        (np = lu_feat_pool(ru, c, bonus, pool, 1100)) <= 0)
+        return -1;
+    pick = pick_pinned(ru, c, cls, bonus, o);
+    if (pick < 0)
+        pick = pick_feat(ru, c, cls, bonus, o, g);
+    if (pick < 0) {             /* the lists are spent: any legal feat */
+        for (j = k = 0; j < np; j++)
+            if (!pick_avoided(o, pool[j]))
+                pool[k++] = pool[j];
+        if (k)
+            np = k;
+        pick = pool[rng_below(g, (unsigned)np)];
     }
+    return lu_pick_feat(ru, c, p, pick, bonus, NULL, 0);
+}
 
-    /* A specialist's extra slot needs a school spell at every castable
-     * level, so the first pick at each level comes from the school. */
-    if (c->school > 0 && is_wizard_like(ru, cls)) {
-        for (sl = 1; sl < NSPLVL; sl++) {
-            int j, have = 0;
+void lu_auto_feats(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o)
+{
+    int bonus;
 
-            if (chr_spell_slots(ru, c, cls, sl) <= 0 ||
-                (p->spells[sl] <= 0 && p->wiz_any <= 0))
+    for (bonus = 1; bonus >= 0; bonus--)    /* bonus slots first, then general */
+        while (lu_auto_feat(ru, c, p, bonus, g, o) == 0)
+            ;
+}
+
+/* A specialist's extra slot needs a school spell at every castable level. */
+int lu_school_due(rules *ru, const chr *c, const pending *p, int sl)
+{
+    int cls = c->lv[c->nlevels - 1].cls, i, j;
+
+    if (c->school <= 0 || !is_wizard_like(ru, cls) || sl < 1 || sl >= NSPLVL)
+        return 0;
+    if (chr_spell_slots(ru, c, cls, sl) <= 0 || (p->spells[sl] <= 0 && p->wiz_any <= 0))
+        return 0;
+    for (i = 0; i < c->nlevels; i++)
+        for (j = 0; j < c->lv[i].nknown[sl]; j++)
+            if (chr_spell_in_school(ru, c->lv[i].known[sl][j], c->school))
+                return 0;
+    return 1;
+}
+
+int lu_auto_school_spell(rules *ru, chr *c, pending *p, int sl, rng *g,
+                         const lu_opts *o)
+{
+    int cls = c->lv[c->nlevels - 1].cls, pool[1100], np, i, j;
+
+    if (!lu_school_due(ru, c, p, sl))
+        return -1;
+    if ((i = pref_spell(ru, c, cls, sl, sl, c->school, &j, o, g)) >= 0)
+        return lu_pick_spell(ru, c, p, sl, i, NULL, 0);
+    np = lu_spell_pool(ru, c, cls, sl, pool, 1100);
+    for (i = j = 0; i < np; i++)
+        if (chr_spell_in_school(ru, pool[i], c->school))
+            pool[j++] = pool[i];
+    if (j <= 0)
+        return -1;
+    return lu_pick_spell(ru, c, p, sl, pool[rng_below(g, (unsigned)j)], NULL, 0);
+}
+
+int lu_auto_spell(rules *ru, chr *c, pending *p, int sl, rng *g, const lu_opts *o)
+{
+    int cls = c->lv[c->nlevels - 1].cls, pool[1100], np, lv, pick;
+
+    if (sl < 0 || sl >= NSPLVL || p->spells[sl] <= 0 ||
+        (np = lu_spell_pool(ru, c, cls, sl, pool, 1100)) <= 0)
+        return -1;
+    pick = pref_spell(ru, c, cls, sl, sl, 0, &lv, o, g);
+    if (pick < 0)
+        pick = pool[rng_below(g, (unsigned)np)];
+    return lu_pick_spell(ru, c, p, sl, pick, NULL, 0);
+}
+
+int lu_auto_wiz_any(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o)
+{
+    int cls = c->lv[c->nlevels - 1].cls, pool[1100], np, top, sl2 = 0, pick;
+
+    if (p->wiz_any <= 0 || (top = class_max_sl(ru, c, cls)) < 1)
+        return -1;
+    pick = pref_spell(ru, c, cls, -1, top, 0, &sl2, o, g);
+    if (pick >= 0)
+        return lu_pick_spell(ru, c, p, sl2, pick, NULL, 0);
+    sl2 = 1 + (int)rng_below(g, (unsigned)top);
+    np = lu_spell_pool(ru, c, cls, sl2, pool, 1100);
+    if (np > 0)
+        return lu_pick_spell(ru, c, p, sl2, pool[rng_below(g, (unsigned)np)], NULL, 0);
+    p->wiz_any--;   /* nothing left at that level; give up one pick */
+    return 0;
+}
+
+void lu_auto_spells(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o)
+{
+    int sl;
+
+    for (sl = 1; sl < NSPLVL; sl++)
+        lu_auto_school_spell(ru, c, p, sl, g, o);
+    for (sl = 0; sl < NSPLVL; sl++)
+        while (lu_auto_spell(ru, c, p, sl, g, o) == 0)
+            ;
+    while (lu_auto_wiz_any(ru, c, p, g, o) == 0)
+        ;
+}
+
+/* One rank into a class skill: the next few skills of the package's list
+ * that still take a rank, else any class skill. */
+int lu_auto_skill(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o)
+{
+    int cls = c->lv[c->nlevels - 1].cls, nsk = rules_nskills(ru), i;
+    int cand[MAX_SK], nc = 0, total = c->nlevels;
+    int cs[8], sw[8], ncs = 0, w, win = pick_window(o ? o->variety : 0);
+
+    for (w = 0; w < 2 && !ncs; w++) {
+        const twoda *sp = lu_pref_tab(ru, c, cls, "SkillPref2DA", w);
+
+        for (i = 0; sp && i < sp->nrows && ncs < win; i++) {
+            int sk = twoda_int(sp, i, "SkillIndex", -1), cost;
+
+            if (sk < 0 || sk >= nsk || sk >= MAX_SK)
                 continue;
-            for (i = 0; i < c->nlevels; i++)
-                for (j = 0; j < c->lv[i].nknown[sl]; j++)
-                    if (chr_spell_in_school(ru, c->lv[i].known[sl][j], c->school))
-                        have = 1;
-            if (have)
-                continue;
-            if ((i = pref_spell(ru, c, cls, sl, sl, c->school, &j, o, g)) >= 0) {
-                lu_pick_spell(ru, c, p, sl, i, NULL, 0);
-                continue;
-            }
-            np = lu_spell_pool(ru, c, cls, sl, pool, 1100);
-            for (i = j = 0; i < np; i++)
-                if (chr_spell_in_school(ru, pool[i], c->school))
-                    pool[j++] = pool[i];
-            if (j > 0)
-                lu_pick_spell(ru, c, p, sl, pool[rng_below(g, (unsigned)j)], NULL, 0);
-        }
-    }
-    for (sl = 0; sl < NSPLVL; sl++) {
-        while (p->spells[sl] > 0 &&
-               (np = lu_spell_pool(ru, c, cls, sl, pool, 1100)) > 0) {
-            int lv, pick = pref_spell(ru, c, cls, sl, sl, 0, &lv, o, g);
-
-            if (pick < 0)
-                pick = pool[rng_below(g, (unsigned)np)];
-            lu_pick_spell(ru, c, p, sl, pick, NULL, 0);
-        }
-    }
-    while (p->wiz_any > 0) {
-        int top = class_max_sl(ru, c, cls), sl2 = 0, pick;
-
-        if (top < 1)
-            break;
-        pick = pref_spell(ru, c, cls, -1, top, 0, &sl2, o, g);
-        if (pick >= 0) {
-            lu_pick_spell(ru, c, p, sl2, pick, NULL, 0);
-            continue;
-        }
-        sl2 = 1 + (int)rng_below(g, (unsigned)top);
-        np = lu_spell_pool(ru, c, cls, sl2, pool, 1100);
-        if (np > 0)
-            lu_pick_spell(ru, c, p, sl2, pool[rng_below(g, (unsigned)np)], NULL, 0);
-        else
-            p->wiz_any--; /* nothing left at that level; give up one pick */
-    }
-
-    /* Skills: class skills mostly, one rank at a time. */
-    for (;;) {
-        int cand[MAX_SK], nc = 0, total = c->nlevels;
-        int cs[8], sw[8], ncs = 0, w, win = pick_window(o ? o->variety : 0);
-
-        /* the next few skills of the package's list that still take a rank */
-        for (w = 0; w < 2 && !ncs; w++) {
-            const twoda *sp = lu_pref_tab(ru, c, cls, "SkillPref2DA", w);
-
-            for (i = 0; sp && i < sp->nrows && ncs < win; i++) {
-                int sk = twoda_int(sp, i, "SkillIndex", -1), cost;
-
-                if (sk < 0 || sk >= nsk || sk >= MAX_SK)
-                    continue;
-                cost = chr_skill_cost(ru, cls, sk);
-                if (cost == 1 && cost <= p->skill_pts &&
-                    skill_ranks(c, sk) + 1 <= skill_max_ranks(total, 1)) {
-                    cs[ncs] = sk;
-                    sw[ncs] = pick_pos_weight(ncs) * pick_pos_weight(ncs) / 16 *
-                                 skill_fit(ru, c, sk);   /* squared: skills favour the top */
-                    ncs++;
-                }
+            cost = chr_skill_cost(ru, cls, sk);
+            if (cost == 1 && cost <= p->skill_pts &&
+                skill_ranks(c, sk) + 1 <= skill_max_ranks(total, 1)) {
+                cs[ncs] = sk;
+                sw[ncs] = pick_pos_weight(ncs) * pick_pos_weight(ncs) / 16 *
+                             skill_fit(ru, c, sk);   /* squared: skills favour the top */
+                ncs++;
             }
         }
-        if (ncs) {
-            lu_buy_skill(ru, c, p, cs[pick_weighted(sw, ncs, g)], 1, NULL, 0);
-            continue;
-        }
-        for (i = 0; i < nsk && i < MAX_SK; i++) {
-            int cost = chr_skill_cost(ru, cls, i);
-            if (cost && cost <= p->skill_pts &&
-                skill_ranks(c, i) + 1 <= skill_max_ranks(total, cost == 1) &&
-                cost == 1)
-                cand[nc++] = i;
-        }
-        if (!nc)
-            break;
-        lu_buy_skill(ru, c, p, cand[rng_below(g, (unsigned)nc)], 1, NULL, 0);
     }
+    if (ncs)
+        return lu_buy_skill(ru, c, p, cs[pick_weighted(sw, ncs, g)], 1, NULL, 0);
+    for (i = 0; i < nsk && i < MAX_SK; i++) {
+        int cost = chr_skill_cost(ru, cls, i);
+        if (cost && cost <= p->skill_pts &&
+            skill_ranks(c, i) + 1 <= skill_max_ranks(total, cost == 1) &&
+            cost == 1)
+            cand[nc++] = i;
+    }
+    if (!nc)
+        return -1;
+    return lu_buy_skill(ru, c, p, cand[rng_below(g, (unsigned)nc)], 1, NULL, 0);
+}
+
+void lu_auto_skills(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o)
+{
+    while (lu_auto_skill(ru, c, p, g, o) == 0)
+        ;
+}
+
+void lu_autofill(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o)
+{
+    lu_auto_domains(ru, c, p, g);
+    lu_auto_school(ru, c, p);
+    lu_auto_ability(ru, c, p);
+    lu_auto_feats(ru, c, p, g, o);
+    lu_auto_spells(ru, c, p, g, o);
+    lu_auto_skills(ru, c, p, g, o);
 }
