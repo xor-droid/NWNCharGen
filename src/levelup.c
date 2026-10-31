@@ -583,6 +583,18 @@ int lu_begin(rules *ru, chr *c, int cls, hp_mode hm, rng *g, pending *p,
             seterr(err, errlen, "class %d is limited to %d levels", cls, max);
             return -1;
         }
+        /* Levels past the class's EpicLevel can only be taken once the
+         * character is epic (the level-up screen stops a Pale Master at 10
+         * until character level 21). */
+        {
+            int epic = rules_class_int(ru, cls, "EpicLevel", -1);
+
+            if (epic > 0 && li < 20 && chr_class_level(c, cls) >= epic) {
+                seterr(err, errlen, "class %d is limited to %d levels before "
+                       "character level 21", cls, epic);
+                return -1;
+            }
+        }
         if (rules_class_int(ru, cls, "ArcSpellLvlMod", 0) > 0) {
             int k;
 

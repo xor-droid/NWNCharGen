@@ -264,6 +264,18 @@ int chr_maxhp(rules *ru, const chr *c)
         if (has_labeled(ru, c, lab))
             hp += 20;
     }
+    /* Pale Master, Deathless Vigor: +3 per Pale Master level from the fifth
+     * to the tenth, +1 per level after that (engine-levelled wizard 8 / Pale
+     * Master 10 stores 18 more than the hit dice and Constitution give). */
+    if (has_labeled(ru, c, "FEAT_DEATHLESS_VIGOR")) {
+        int pm = class_by_label(ru, "Pale_Master");
+
+        pm = pm >= 0 ? chr_class_level(c, pm) : 0;
+        if (pm >= 5)
+            hp += 3 * ((pm < 10 ? pm : 10) - 4);
+        if (pm > 10)
+            hp += pm - 10;
+    }
     return hp;
 }
 

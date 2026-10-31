@@ -115,7 +115,7 @@ for s in 1 2 3; do
 done
 "$gen" --classes "fighter:10,dwarvendefender:5" --hp max --seed 9530 --out-dir "$pr" >/dev/null
 "$gen" --classes "wizard:8,palemaster:6" --seed 9540 --out-dir "$pr" >/dev/null
-"$gen" --classes "fighter:2,wizard:7,palemaster:11" --school necromancy --seed 9541 --out-dir "$pr" >/dev/null
+"$gen" --classes "fighter:2,wizard:8,palemaster:11" --school necromancy --seed 9541 --out-dir "$pr" >/dev/null
 pcount=$(ls "$pr" | wc -l | tr -d ' ')
 psum=$(cd "$pr" && sha256sum ./*.bic | sort -k2 | sha256sum | cut -d' ' -f1)
 line="$line
