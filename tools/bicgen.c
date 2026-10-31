@@ -27,6 +27,9 @@ typedef struct {
     const char *install, *user, *outdir, *name;
     const char *race_s, *class_s, *align_s, *gender_s, *school_s, *classes_s, *hp_s, *variety_s;
     const char *spec_s, *find_feat_s;
+    const char *look_k[8], *look_v[8];                 /* --head, --portrait, ... and [appearance] */
+    int nlook;
+    const char *list_look;                             /* --list-heads|portraits|voices */
     const char *pin_s[MAX_PINS], *avoid_s[MAX_PINS];   /* feat names from --pin/--avoid/spec */
     int pin_from[MAX_PINS], npin, navoid;
     lu_opts lo;                                        /* resolved variety, pins, avoids */
@@ -50,6 +53,12 @@ static void usage(void)
          "  --school S        wizard specialty: a school name, 0-8, generalist or\n"
          "                    random (default: generalist)\n"
          "  --name \"First Last\"   (default: random)\n"
+         "  --head N          head model number (see --list-heads)\n"
+         "  --portrait NAME   portrait, e.g. hu_m_13_ (see --list-portraits)\n"
+         "  --voice NAME|N    player voice (see --list-voices)\n"
+         "  --hair/--skin/--tattoo1/--tattoo2 N   colour numbers 0-175\n"
+         "  --list-heads, --list-portraits, --list-voices   list the choices for the\n"
+         "                    --race and --gender given, then exit\n"
          "  --str/--dex/--con/--int/--wis/--cha N   base scores before racial\n"
          "                    adjustment, 8-18, within the point-buy budget\n"
          "  --level N         character level, 1-40 (default 1)\n"
@@ -195,6 +204,23 @@ static int add_names(const char **names, int *from, int *n, const char *list)
     return 0;
 }
 
+/* Remembers one appearance choice; a later one for the same aspect wins. */
+static int add_look(opts *o, const char *key, const char *val)
+{
+    int i;
+
+    for (i = 0; i < o->nlook; i++)
+        if (!strcmp(o->look_k[i], key)) {
+            o->look_v[i] = val;
+            return 0;
+        }
+    if (o->nlook >= 8)
+        return -1;
+    o->look_k[o->nlook] = key;
+    o->look_v[o->nlook++] = val;
+    return 0;
+}
+
 /* Fills o from an INI file. Unknown sections or keys are errors, so typos
  * do not silently turn into a different build. */
 static int load_spec(const char *path, opts *o, char *err, size_t errlen)
@@ -242,6 +268,9 @@ static int load_spec(const char *path, opts *o, char *err, size_t errlen)
                     o->fixed[a] = atoi(v);
                     hit = 1;
                 }
+        } else if (!strcmp(sec, "appearance")) {
+            if (look_is_key(k) && add_look(o, own(e->key), v) == 0)
+                hit = 1;
         } else if (!strcmp(sec, "feats")) {
             if (!strcmp(k, "pin") && add_names(o->pin_s, o->pin_from, &o->npin, v) == 0)
                 hit = 1;
@@ -390,6 +419,11 @@ static int build_one(rules *ru, const opts *o, uint64_t seed, const char *outdir
     memcpy(c.abil, abil, sizeof abil);
 
     look_randomize(ru, &c, &g);
+    for (n = 0; n < o->nlook; n++)
+        if (look_set(ru, t, &c, o->look_k[n], o->look_v[n], err, sizeof err) != 0) {
+            fprintf(stderr, "bicgen: --%s: %s\n", o->look_k[n], err);
+            return -1;
+        }
     if (o->name) {
         const char *sp = strchr(o->name, ' ');
         snprintf(first, sizeof first, "%.*s", sp ? (int)(sp - o->name) : 63, o->name);
@@ -583,6 +617,14 @@ int main(int argc, char **argv)
                    want_arg(argc, argv, &i, "--name", &o.name) ||
                    want_arg(argc, argv, &i, "--out-dir", &o.outdir)) {
             ;
+        } else if (!strcmp(argv[i], "--list-heads") || !strcmp(argv[i], "--list-portraits") ||
+                   !strcmp(argv[i], "--list-voices")) {
+            o.list_look = argv[i] + 7;
+        } else if (!strncmp(argv[i], "--", 2) && look_is_key(argv[i] + 2)) {
+            const char *key = argv[i] + 2;
+
+            if (want_arg(argc, argv, &i, argv[i], &v))
+                add_look(&o, key, v);
         } else if (want_arg(argc, argv, &i, "--pin", &v)) {
             if (add_names(o.pin_s, o.pin_from, &o.npin, v) != 0) {
                 fprintf(stderr, "bicgen: too many --pin feats (limit %d)\n", MAX_PINS);
@@ -698,6 +740,20 @@ int main(int argc, char **argv)
             return 2;
         }
         o.lo.avoid[o.lo.navoid++] = f;
+    }
+    if (o.list_look) {
+        chr lc_;
+        int rc = o.race_s ? cli_find_row(rules_races(ru), o.race_s, -1) : -1;
+
+        if (rc < 0 || !o.gender_s) {
+            fprintf(stderr, "bicgen: --list-%s needs --race and --gender\n", o.list_look);
+            return 2;
+        }
+        chr_init(&lc_);
+        lc_.race = rc;
+        lc_.gender = tolower((unsigned char)o.gender_s[0]) == 'f';
+        look_list(ru, t, stdout, o.list_look, lc_.race, lc_.gender);
+        return 0;
     }
     if (o.list) {
         char b[160];

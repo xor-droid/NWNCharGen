@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "cli.h"
+#include "look.h"
 #include "plan.h"
 
 #include <ctype.h>
@@ -252,6 +253,7 @@ void cli_sheet(rules *ru, const tlk *t, const chr *c)
         printf("  Domains: %s, %s\n", cli_tname(t, d, c->domain1, "Name", b, sizeof b),
                cli_tname(t, d, c->domain2, "Name", b2, sizeof b2));
     }
+    look_show(ru, t, stdout, c);
 }
 
 

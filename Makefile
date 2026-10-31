@@ -22,5 +22,6 @@ check: all
 	tests/guided.sh
 	tests/equip.sh
 	tests/prestige.sh
+	tests/look.sh
 
 .PHONY: all clean check

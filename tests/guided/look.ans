@@ -1,0 +1,23 @@
+# seed 41
+# args --class fighter --level 1 --race elf --gender f --align NG
+# scores, name and variety by default, the level automatic, then the appearance step:
+# bad answers, good answers, the lists
+
+
+
+
+
+level
+head 9
+head 999
+voice fighter
+voice nonsense
+hair 300
+hair 4
+tattoo1 12
+skin 3
+list heads
+list voices
+portrait el_f_03_
+done
+

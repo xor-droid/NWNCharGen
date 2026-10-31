@@ -9,6 +9,7 @@
 
 #include "cli.h"
 #include "levelup.h"
+#include "look.h"
 
 #define POOL_MAX 1100
 
@@ -1083,6 +1084,48 @@ static void pick_creature(guide *g, const char *table, const char *what, int *ty
         snprintf(name, nn, "%s", line);
 }
 
+/* The look was drawn before the levels; this lets the person change any of it. */
+static void step_look(guide *g, chr *c)
+{
+    char line[200], err[160];
+
+    if (silent(g))
+        return;
+    say(g, "\nAppearance (drawn at random for a %s %s):\n", c->gender ? "female" : "male",
+        cli_tname(g->t, rules_races(g->ru), c->race, "Name", err, sizeof err));
+    look_show(g->ru, g->t, g->out, c);
+    for (;;) {
+        char *arg;
+        int ok;
+
+        if (ask(g, "Change it? (head N, portrait NAME, voice NAME, hair N, skin N, tattoo1 N, "
+                   "tattoo2 N, list heads|portraits|voices, Enter = keep): ", line,
+                sizeof line) != 0 || !*line || !strcasecmp(line, "done"))
+            return;
+        for (arg = line; *arg && !isspace((unsigned char)*arg); arg++)
+            ;
+        if (*arg) {
+            *arg++ = '\0';
+            while (isspace((unsigned char)*arg))
+                arg++;
+        }
+        if (!strcasecmp(line, "list") && (!strcmp(arg, "heads") || !strcmp(arg, "portraits") ||
+                                           !strcmp(arg, "voices"))) {
+            look_list(g->ru, g->t, g->out, arg, c->race, c->gender);
+            continue;
+        }
+        for (ok = 0; line[ok]; ok++)
+            line[ok] = (char)tolower((unsigned char)line[ok]);
+        if (!look_is_key(line) || !*arg) {
+            say(g, "  not understood (for example: head 12, voice 242)\n");
+        } else if (look_set(g->ru, g->t, c, line, arg, err, sizeof err) != 0) {
+            say(g, "  %s\n", err);
+        } else {
+            look_show(g->ru, g->t, g->out, c);
+        }
+    }
+}
+
 int guide_finish(guide *g, chr *c)
 {
     g->step_auto = 0;
@@ -1093,6 +1136,7 @@ int guide_finish(guide *g, chr *c)
     if (c->companion >= 0 && c->companion_name[0])
         pick_creature(g, "hen_companion", "Animal companion", &c->companion,
                       c->companion_name, sizeof c->companion_name);
+    step_look(g, c);
     return g->quit ? -1 : 0;
 }
 
