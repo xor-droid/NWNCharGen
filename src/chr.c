@@ -155,11 +155,17 @@ int chr_save(rules *ru, const chr *c, int which)
     const twoda *cl = rules_classes(ru);
     int cls, total = 0;
 
+    /* The game sums each class's table over the levels taken within the first
+     * twenty character levels, then adds one point per two character levels
+     * above twenty, whatever the class (engine-levelled fighter 8 / barbarian
+     * 22: 2+4+5 Reflex, not the 2+7 of a per-class epic row). */
     for (cls = 0; cls < cl->nrows; cls++) {
-        int lv = chr_class_level(c, cls);
+        int lv = chr_class_level_upto(c, cls, 20);
         if (lv)
             total += rules_cls_save(ru, cls, lv, col[which]);
     }
+    if (c->nlevels > 20)
+        total += (c->nlevels - 20) / 2;
     total += abil_mod(geared_abil(ru, c, abil[which])) + c->gear_save[which];
     /* Feat effects the game bakes into the stored value. */
     if (has_labeled(ru, c, which == 0 ? "GreatFort" :

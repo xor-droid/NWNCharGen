@@ -55,7 +55,7 @@ A session of nothing but Enters gives byte-for-byte the file the same seed gives
 
 ## Limits
 
-No purchased or magical equipment (characters get their package's items and gold only, nothing is worn but a robe), the stored saves and hit points of a few epic and prestige premades still differ from the derived values by a few points (worn-item bonuses, Luck of Heroes, Strong Soul, Snake Blood, Sacred Defense, Epic Toughness and the epic save feats are modelled; what remains is the Pale Master Deathless Vigor hit points and small offsets in the epic save rows, the cause of which is not known; the game may recompute these on load), familiars and companions are random unless chosen in the guided builder.
+No purchased or magical equipment (characters get their package's items and gold only, nothing is worn but a robe), the stored saves and hit points of a few epic and prestige premades still differ from the derived values by a few points (worn-item bonuses, Luck of Heroes, Strong Soul, Snake Blood, Sacred Defense, Epic Toughness and the epic save feats are modelled; what remains is the Pale Master Deathless Vigor hit points and the Weapon Master saves, whose premade looks like a different save table), familiars and companions are random unless chosen in the guided builder.
 
 ## License
 
