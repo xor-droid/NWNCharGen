@@ -195,6 +195,52 @@ static size_t list_len(const gff_struct *g, const char *label)
     return f && f->type == GFF_LIST ? f->v.list.n : 0;
 }
 
+/* Item properties that move the stored saves and hit points: Ability Bonus
+ * (scores, before the modifier), Improved Saving Throws (universal subtype
+ * only; the elemental ones are conditional) and the per-save version. The
+ * property, its subtype and its cost are all read from the 2DAs. */
+static void apply_gear(rules *ru, const gff_struct *g, chr *c)
+{
+    const twoda *def = rules_tab(ru, "itempropdef");
+    const twoda *ct = rules_tab(ru, "iprp_costtable");
+    size_t it, k, np;
+
+    if (!def || !ct)
+        return;
+    for (it = 0; it < list_len(g, "Equip_ItemList"); it++) {
+        const gff_struct *item = list_at(g, "Equip_ItemList", it);
+
+        np = list_len(item, "PropertiesList");
+        for (k = 0; k < np; k++) {
+            const gff_struct *p = list_at(item, "PropertiesList", k);
+            int row = (int)gff_get_int(p, "PropertyName", -1);
+            int sub = (int)gff_get_int(p, "Subtype", -1);
+            int cost = (int)gff_get_int(p, "CostValue", -1);
+            const char *label = row >= 0 && row < def->nrows ? twoda_get(def, row, "Label") : NULL;
+            int tr = row >= 0 && row < def->nrows ? twoda_int(def, row, "CostTableResRef", -1) : -1;
+            const char *tn = tr >= 0 && tr < ct->nrows ? twoda_get(ct, tr, "Name") : NULL;
+            const twoda *vt = tn ? rules_tab(ru, tn) : NULL;
+            int v = vt && cost >= 0 ? twoda_int(vt, cost, "Value", 0) : 0;
+
+            if (!label || !v)
+                continue;
+            if (!strcmp(label, "Ability") && sub >= 0 && sub < NABIL) {
+                static const int ord[NABIL] = { ABIL_STR, ABIL_DEX, ABIL_CON, ABIL_INT, ABIL_WIS, ABIL_CHA };
+                c->gear_abil[ord[sub]] += v;
+            } else if (!strcmp(label, "ImprovedSavingThrows") && sub == 0) {
+                c->gear_save[0] += v;
+                c->gear_save[1] += v;
+                c->gear_save[2] += v;
+            } else if (!strcmp(label, "ImprovedSavingThrowsSpecific")) {
+                /* iprp_savingthrow: 1 Fortitude, 2 Will, 3 Reflex */
+                int w = sub == 1 ? 0 : sub == 3 ? 1 : sub == 2 ? 2 : -1;
+                if (w >= 0)
+                    c->gear_save[w] += v;
+            }
+        }
+    }
+}
+
 /* A level-1 character carries its package's items, built from the .uti files
  * the way the engine builds them, laid out in the pack, and wears one robe.
  * Layout and ObjectIds are compared only for premades numbered from 193 (the
@@ -678,6 +724,7 @@ int main(int argc, char **argv)
             continue;
         }
         files++;
+        apply_gear(ru, g, &c);
         check(ru, g, &c);
         if (problems == before)
             clean++;

@@ -101,6 +101,27 @@ int chr_bab(rules *ru, const chr *c)
     return total;
 }
 
+/* Class row by its classes.2da Label, or -1. */
+static int class_by_label(rules *ru, const char *label)
+{
+    const twoda *cl = rules_classes(ru);
+    int r;
+
+    for (r = 0; r < cl->nrows; r++) {
+        const char *l = twoda_get(cl, r, "Label");
+
+        if (l && strcasecmp(l, label) == 0)
+            return r;
+    }
+    return -1;
+}
+
+/* Ability score as the saves and hit points see it: worn items count. */
+static int geared_abil(rules *ru, const chr *c, int a)
+{
+    return chr_eff_abil(ru, c, a) + c->gear_abil[a];
+}
+
 int chr_save(rules *ru, const chr *c, int which)
 {
     static const char *col[3] = { "FortSave", "RefSave", "WillSave" };
@@ -113,15 +134,32 @@ int chr_save(rules *ru, const chr *c, int which)
         if (lv)
             total += rules_cls_save(ru, cls, lv, col[which]);
     }
-    total += abil_mod(chr_eff_abil(ru, c, abil[which]));
+    total += abil_mod(geared_abil(ru, c, abil[which])) + c->gear_save[which];
     /* Feat effects the game bakes into the stored value. */
     if (has_labeled(ru, c, which == 0 ? "GreatFort" :
                            which == 1 ? "LightngRef" : "IronWill"))
         total += 2;
     if (has_labeled(ru, c, "lucky"))
         total += 1;
+    if (has_labeled(ru, c, "LuckOfHeroes"))
+        total += 1;
+    /* Snake Blood: +1 Reflex. Strong Soul: +1 Fortitude and Will. */
+    if (which == 1 && has_labeled(ru, c, "SnakeBlood"))
+        total += 1;
+    if (which != 1 && has_labeled(ru, c, "StrongSoul"))
+        total += 1;
+    /* Champion of Torm, Sacred Defense: +1 on every save per 2 class levels. */
+    if (has_labeled(ru, c, "FEAT_SACRED_DEFENSE_1")) {
+        int torm = class_by_label(ru, "Champion_Torm");
+
+        if (torm >= 0)
+            total += chr_class_level(c, torm) / 2;
+    }
+    if (has_labeled(ru, c, which == 0 ? "FEAT_EPIC_FORTITUDE" :
+                           which == 1 ? "FEAT_EPIC_REFLEXES" : "FEAT_EPIC_WILL"))
+        total += 4;
     if (has_labeled(ru, c, "DivineGrace")) {
-        int m = abil_mod(chr_eff_abil(ru, c, ABIL_CHA));
+        int m = abil_mod(geared_abil(ru, c, ABIL_CHA));
         total += m > 0 ? m : 0;
     }
     return total;
@@ -138,10 +176,17 @@ int chr_hp_rolled(const chr *c)
 
 int chr_maxhp(rules *ru, const chr *c)
 {
-    int hp = chr_hp_rolled(c) + c->nlevels * abil_mod(chr_eff_abil(ru, c, ABIL_CON));
+    int i, hp = chr_hp_rolled(c) + c->nlevels * abil_mod(geared_abil(ru, c, ABIL_CON));
 
     if (has_labeled(ru, c, "Toughness"))
         hp += c->nlevels;
+    for (i = 1; i <= 10; i++) {
+        char lab[40];
+
+        snprintf(lab, sizeof lab, "FEAT_EPIC_TOUGHNESS_%d", i);
+        if (has_labeled(ru, c, lab))
+            hp += 20;
+    }
     return hp;
 }
 

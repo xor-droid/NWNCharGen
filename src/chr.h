@@ -60,6 +60,12 @@ typedef struct {
     int skin, hair, tattoo1, tattoo2;
     char portrait[40];
     int body[18];            /* BodyPart_* in file order */
+
+    /* Worn-item bonuses, set only when reading an engine-written file (the
+     * generator equips nothing): added to ability scores before the modifier
+     * and to each save. */
+    int gear_abil[NABIL];
+    int gear_save[3];
 } chr;
 
 void chr_init(chr *c);
