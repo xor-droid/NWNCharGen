@@ -210,6 +210,22 @@ static void apply_gear(rules *ru, const gff_struct *g, chr *c)
     for (it = 0; it < list_len(g, "Equip_ItemList"); it++) {
         const gff_struct *item = list_at(g, "Equip_ItemList", it);
 
+        {
+            /* what the item is worth as armor: the torso part of body armor,
+             * the base AC of a shield, then its AC bonus properties below */
+            int bi = (int)gff_get_int(item, "BaseItem", -1);
+            const twoda *bt = rules_tab(ru, "baseitems");
+
+            if (bi == 16) {
+                const twoda *ch = rules_tab(ru, "parts_chest");
+                int tp = (int)gff_get_int(item, "ArmorPart_Torso", -1);
+                const char *v = ch && tp >= 0 && tp < ch->nrows ? twoda_get(ch, tp, "ACBONUS") : NULL;
+
+                c->gear_ac += v ? atoi(v) : 0;
+            } else if (bt && bi >= 0 && bi < bt->nrows) {
+                c->gear_ac += twoda_int(bt, bi, "BaseAC", 0);
+            }
+        }
         np = list_len(item, "PropertiesList");
         for (k = 0; k < np; k++) {
             const gff_struct *p = list_at(item, "PropertiesList", k);
@@ -227,6 +243,8 @@ static void apply_gear(rules *ru, const gff_struct *g, chr *c)
             if (!strcmp(label, "Ability") && sub >= 0 && sub < NABIL) {
                 static const int ord[NABIL] = { ABIL_STR, ABIL_DEX, ABIL_CON, ABIL_INT, ABIL_WIS, ABIL_CHA };
                 c->gear_abil[ord[sub]] += v;
+            } else if (!strcmp(label, "Armor")) {
+                c->gear_ac += v;
             } else if (!strcmp(label, "ImprovedSavingThrows") && sub == 0) {
                 c->gear_save[0] += v;
                 c->gear_save[1] += v;
@@ -602,6 +620,11 @@ static void check(rules *ru, const gff_struct *g, const chr *c)
     stored = (int)gff_get_int(g, "HitPoints", -1);
     if (stored != chr_hp_rolled(c))
         bad(cur, "HitPoints file=%d sum(LvlStatHitDie)=%d", stored, chr_hp_rolled(c));
+
+    /* Armor class */
+    stored = (int)gff_get_int(g, "ArmorClass", -99);
+    if (stored != chr_ac(ru, c))
+        bad(cur, "ArmorClass file=%d derived=%d", stored, chr_ac(ru, c));
 
     /* Saves */
     {

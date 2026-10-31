@@ -184,7 +184,8 @@ void lu_set_entry_checks(int on)
 
 int lu_prestige_supported(rules *ru, int cls)
 {
-    static const char *const ok[] = { "Champion_Torm", "Dwarven_Defender", "Pale_Master" };
+    static const char *const ok[] = { "Champion_Torm", "Dwarven_Defender", "Pale_Master", "Arcane_Archer", "Shifter", "WeaponMaster", "Dragon_Disciple",
+        "Shadowdancer", "Harper", "Assassin", "Blackguard", "Purple_Dragon_Knight" };
     const char *l = rules_class_str(ru, cls, "Label");
     size_t i;
 
@@ -613,6 +614,8 @@ int lu_begin(rules *ru, chr *c, int cls, hp_mode hm, rng *g, pending *p,
     lr->epic = li >= 20;
     c->nlevels++;
     clvl = chr_class_level(c, cls);
+    for (i = 0; i < NABIL; i++)         /* the class's stat gains join the stored scores */
+        c->abil[i] += chr_stat_gain(ru, cls, clvl, i);
 
     hd = rules_class_int(ru, cls, "HitDie", 4);
     if (li == 0 || hm == HP_MAX)
@@ -1006,13 +1009,19 @@ int lu_auto_skill(rules *ru, chr *c, pending *p, rng *g, const lu_opts *o)
     int cs[8], sw[8], ncs = 0, w, win = pick_window(o ? o->variety : 0);
 
     /* ranks a prestige class asks for come first, at cross-class cost if need be */
+    int saving = 0;
+
     for (i = 0; o && i < nsk && i < MAX_SK; i++) {
         int have = skill_ranks(c, i), cost = chr_skill_cost(ru, cls, i);
 
-        if (o->skill_goal[i] > have && cost && cost <= p->skill_pts &&
-            have + 1 <= skill_max_ranks(total, cost == 1))
-            return lu_buy_skill(ru, c, p, i, 1, NULL, 0);
+        if (o->skill_goal[i] > have && cost && have + 1 <= skill_max_ranks(total, cost == 1)) {
+            if (cost <= p->skill_pts)
+                return lu_buy_skill(ru, c, p, i, 1, NULL, 0);
+            saving = 1;
+        }
     }
+    if (saving)                         /* keep the points: a cross-class rank costs two */
+        return -1;
 
     for (w = 0; w < 2 && !ncs; w++) {
         const twoda *sp = lu_pref_tab(ru, c, cls, "SkillPref2DA", w);

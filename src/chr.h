@@ -66,6 +66,7 @@ typedef struct {
      * and to each save. */
     int gear_abil[NABIL];
     int gear_save[3];
+    int gear_ac;
 } chr;
 
 void chr_init(chr *c);
@@ -91,6 +92,14 @@ int chr_eff_abil(rules *ru, const chr *c, int a);
 int chr_bab(rules *ru, const chr *c);
 int chr_save(rules *ru, const chr *c, int which); /* 0 fort, 1 ref, 2 will */
 int chr_maxhp(rules *ru, const chr *c);
+/* Ability points a class's StatGainTable adds at class level clvl, and the
+ * natural armor class it adds in total. Both are written into the stored
+ * values, not applied as effects. */
+int chr_stat_gain(rules *ru, int cls, int clvl, int a);
+int chr_natural_ac(rules *ru, const chr *c);
+/* ArmorClass as stored: 10 + Dex + class natural AC (+ Wis for monks), plus
+ * gear_ac when reading an engine-written file. */
+int chr_ac(rules *ru, const chr *c);
 int chr_hp_rolled(const chr *c);
 
 /* Skill points the game grants for level index li (0-based). */

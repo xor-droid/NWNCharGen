@@ -51,13 +51,39 @@ int chr_has_feat(const chr *c, int feat)
     return 0;
 }
 
+int chr_stat_gain(rules *ru, int cls, int clvl, int a)
+{
+    static const char *const col[NABIL] = { "Str", "Dex", "Con", "Int", "Wis", "Cha" };
+    const twoda *t = rules_class_tab(ru, cls, "StatGainTable");
+
+    if (!t || clvl < 1 || clvl > t->nrows)
+        return 0;
+    return twoda_int(t, clvl - 1, col[a], 0);
+}
+
+int chr_natural_ac(rules *ru, const chr *c)
+{
+    int i, n = 0;
+
+    for (i = 0; i < c->nlevels; i++) {
+        const twoda *t = rules_class_tab(ru, c->lv[i].cls, "StatGainTable");
+        int clvl = chr_class_level_upto(c, c->lv[i].cls, i + 1);
+
+        if (t && clvl <= t->nrows)
+            n += twoda_int(t, clvl - 1, "NaturalAC", 0);
+    }
+    return n;
+}
+
 int chr_abil_at(rules *ru, const chr *c, int a, int nlevels)
 {
     int v = c->abil[a], i;
 
-    for (i = nlevels; i < c->nlevels; i++)
+    for (i = nlevels; i < c->nlevels; i++) {
         if (c->lv[i].abil == a)
             v--;
+        v -= chr_stat_gain(ru, c->lv[i].cls, chr_class_level_upto(c, c->lv[i].cls, i + 1), a);
+    }
     return v + rules_race_adjust(ru, c->race, a);
 }
 
@@ -163,6 +189,51 @@ int chr_save(rules *ru, const chr *c, int which)
         total += m > 0 ? m : 0;
     }
     return total;
+}
+
+/* Total ranks in the skill whose skills.2da Label is label. */
+static int ranks_labeled(rules *ru, const chr *c, const char *label)
+{
+    const twoda *t = rules_tab(ru, "skills");
+    int r, i, n = 0;
+
+    for (r = 0; r < t->nrows && r < MAX_SK; r++) {
+        const char *l = twoda_get(t, r, "Label");
+
+        if (l && strcasecmp(l, label) == 0) {
+            for (i = 0; i < c->nlevels; i++)
+                n += c->lv[i].ranks[r];
+            break;
+        }
+    }
+    return n;
+}
+
+static int has_epic_armor_skin(rules *ru, const chr *c)
+{
+    return has_labeled(ru, c, "FEAT_EPIC_ARMOR_SKIN");
+}
+
+int chr_ac(rules *ru, const chr *c)
+{
+    /* Tumble: one point of dodge AC per five ranks */
+    int ac = 10 + abil_mod(geared_abil(ru, c, ABIL_DEX)) + chr_natural_ac(ru, c) + c->gear_ac
+           + ranks_labeled(ru, c, "Tumble") / 5;
+
+    if (has_labeled(ru, c, "MonkACBonus")) {
+        int w = abil_mod(geared_abil(ru, c, ABIL_WIS)), cls;
+
+        ac += w > 0 ? w : 0;
+        /* and one more point for every five monk levels */
+        for (cls = 0; cls < rules_nclasses(ru); cls++) {
+            const char *l = rules_class_str(ru, cls, "Label");
+
+            if (l && strcasecmp(l, "Monk") == 0)
+                ac += chr_class_level(c, cls) / 5;
+        }
+    }
+    ac += 2 * has_epic_armor_skin(ru, c);
+    return ac;
 }
 
 int chr_hp_rolled(const chr *c)

@@ -166,17 +166,6 @@ static int has_labeled(rules *ru, const chr *c, const char *l)
     return f >= 0 && chr_has_feat(c, f);
 }
 
-static int armor_class(rules *ru, const chr *c)
-{
-    int ac = 10 + abil_mod(chr_eff_abil(ru, c, ABIL_DEX));
-
-    if (has_labeled(ru, c, "MonkACBonus")) {
-        int w = abil_mod(chr_eff_abil(ru, c, ABIL_WIS));
-        ac += w > 0 ? w : 0;
-    }
-    return ac;
-}
-
 static int class_order(const chr *c, int *out)
 {
     int i, j, n = 0;
@@ -237,7 +226,7 @@ gff_struct *chr_to_gff(rules *ru, const chr *c, rng *g)
     CHAR(r, "RefSaveThrow", chr_save(ru, c, 1));
     CHAR(r, "WillSaveThrow", chr_save(ru, c, 2));
     CHAR(r, "FortSaveThrow", chr_save(ru, c, 0));
-    SHORT(r, "ArmorClass", armor_class(ru, c));
+    SHORT(r, "ArmorClass", chr_ac(ru, c));
     BYTE(r, "OverrideBAB", 0);
     /* the file orders the abilities Str Dex Int Wis Con Cha */
     BYTE(r, "Str", c->abil[ABIL_STR]);
